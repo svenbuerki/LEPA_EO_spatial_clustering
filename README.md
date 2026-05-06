@@ -18,7 +18,7 @@ Habitat fragmentation limits pollen-mediated gene flow between populations, caus
 The pipeline answers two questions:
 
 1. **Which locations share a pollinator pool today?** (500 m hull-to-hull threshold → geographic groups)
-2. **Which groups share a common ancestral colonization history?** (Ward's D2 clustering → independent bottleneck lineages, BL1–BL5)
+2. **Which groups were fragmented from the same ancestral metapopulation and now represent independent bottleneck units?** (Ward's D2 clustering → independent bottleneck lineages, BL1–BL5)
 
 ---
 
@@ -65,7 +65,7 @@ Near-miss pairs (500 m–2 km apart) are flagged separately as potential managem
 
 ### Step 2 — Bottleneck lineages (Ward's D2 clustering)
 
-Group centroids are used to compute pairwise distances between all 32 groups. Ward's D2 hierarchical clustering is applied to these centroid distances; the optimal number of clusters k is selected by silhouette score maximisation (k = 2–6). Each cluster is an **independent bottleneck lineage (BL)**: a set of groups close enough in space to plausibly share a common ancestral colonization event. The number of BLs (k = 5, silhouette = 0.73) is the estimated number of independent colonization events across the species range, and defines the minimum number of geographic regions that must be sampled to capture landscape-wide S-allele diversity.
+Group centroids are used to compute pairwise distances between all 32 groups. Ward's D2 hierarchical clustering is applied to these centroid distances; the optimal number of clusters k is selected by silhouette score maximisation (k = 2–6). Each cluster is an **independent bottleneck lineage (BL)**: a set of groups close enough in space to have plausibly been part of the same ancestral metapopulation before habitat fragmentation severed connectivity between them. The number of BLs (k = 5, silhouette = 0.73) is the estimated number of independent bottleneck units produced by fragmentation across the species range, and defines the minimum number of geographic regions that must be sampled to capture landscape-wide genetic diversity.
 
 ### Drift index
 
