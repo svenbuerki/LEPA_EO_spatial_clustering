@@ -1,9 +1,11 @@
 # LEPA EO Spatial Connectivity and Clustering
 
-**Author:** Sven Buerki (svenbuerki@boisestate.edu), Boise State University
-**Script:** `EO_spatial_clustering.R`
-**Project:** Quantifying the effect of habitat fragmentation on *Lepidium papilliferum* populations and estimating the number of independent demographic bottlenecks across the species range
-**Related repository:** [SRK_bioinformatics / Canu_amplicon](https://github.com/svenbuerki/SRK_bioinformatics) — S-allele genotyping and bioinformatics pipeline; geographic groups and bottleneck lineages defined here serve as the sampling and interpretation framework for SRK analyses in that repo.
+| | |
+|---|---|
+| **Author** | Sven Buerki (svenbuerki@boisestate.edu), Boise State University |
+| **Script** | `EO_spatial_clustering.R` |
+| **Project** | Quantifying the effect of habitat fragmentation on *Lepidium papilliferum* populations and estimating the number of independent demographic bottlenecks across the species range |
+| **Related repository** | [SRK_bioinformatics / Canu_amplicon](https://github.com/svenbuerki/SRK_bioinformatics) — S-allele genotyping and bioinformatics pipeline; geographic groups and bottleneck lineages defined here serve as the sampling and interpretation framework for SRK analyses in that repo |
 
 ---
 
