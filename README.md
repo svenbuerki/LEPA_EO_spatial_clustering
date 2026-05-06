@@ -39,7 +39,11 @@ LEPA_EO_spatial_clustering/
     └── EO_BL_drift_panel.png        # Five-panel BL network figures with drift index
 ```
 
-> **Raw input data are not included in this repository.** The input file (`Peggy_EOs_Germplasm_w_lat_long_from_Events_30Apr2026.csv`) contains decimal latitude/longitude coordinates for germplasm collection events and is maintained locally. The derived outputs in `data/` contain no geographic coordinates and are safe for public sharing.
+> **Raw input data are not included in this repository.** The script requires the following input file, which contains decimal latitude/longitude coordinates for germplasm collection events and is maintained locally due to data sensitivity:
+>
+> - `Peggy_EOs_Germplasm_w_lat_long_from_Events_30Apr2026.csv`
+>
+> The derived outputs in `data/` contain no geographic coordinates and are safe for public sharing.
 
 ---
 
@@ -93,7 +97,7 @@ Install missing packages with `install.packages(c("sf", "igraph", "ggplot2", "gg
 
 ## Running the script
 
-1. Place the raw input file (`Peggy_EOs_Germplasm_w_lat_long_from_Events_*.csv`) in the same directory as the script, or update `out_dir` at line 23–29 to point to its location.
+1. Obtain the input file `Peggy_EOs_Germplasm_w_lat_long_from_Events_30Apr2026.csv` (not distributed in this repository — contact the author) and place it in the same directory as the script, or update `out_dir` at line 23–29 to point to its location.
 2. Open `EO_spatial_clustering.R` in RStudio and run it, or source it from the command line: `Rscript EO_spatial_clustering.R`.
 3. All output CSVs and figures are written to `out_dir`.
 
@@ -133,8 +137,6 @@ The dominant finding is **extreme spatial isolation**: 28 of 39 locations (72%) 
 | 15 | EO18 | 17 | EO18 | 412.2 | within-EO |
 | 16 | EO18 | 17 | EO18 | 466.1 | within-EO |
 | 18 | EO18 | 19 | EO18 | 493.4 | within-EO |
-
-**Data correction (30 Apr 2026):** Two germplasm records (germplasmIDs 210–211) were previously misattributed to EO118 (loc 4) but carried EO76 coordinates. Correcting `locationID` from 4 to 2 resolved a false 0 m between-EO connection. EO76 (loc 2) and EO118 (loc 4) are now correctly independent geographic groups separated by ~7 km.
 
 ### Near-miss pairs (500 m–2 km)
 
@@ -295,12 +297,14 @@ The table below maps each geographic group and its constituent `locationID` valu
 - **Drift index limitations.** DI is a geometric ranking tool with no embedded population genetics model. It does not account for plant density, non-linear area–Ne relationships, or variance in reproductive success. More principled alternatives include Ne estimated from census size or from temporal allele frequency change using seed archive material.
 - **500 m threshold.** Based on published estimates for small-bodied pollinators in fragmented landscapes. Species-specific tracking data for *L. papilliferum* would sharpen this threshold.
 - **Event coverage.** Locations with few events (n = 1–3) have small convex hulls that may underestimate their true spatial footprint.
-- **Temporal dimension.** The connectivity analysis reflects current collection event locations only. Historical locations (seed archive, pre-1991 records) are not included.
-
 ---
 
 ## Data availability
 
-Raw coordinate data are maintained locally and are not distributed in this repository. All derived outputs (distance matrices, group assignments, BL assignments, drift indices) in `data/` contain no geographic coordinates and are publicly available here.
+The following input file is required to run the script but is not distributed in this repository due to the sensitivity of the geographic coordinate data it contains:
 
-The input file format expected by the script is a CSV with columns `locationID`, `EOCode`, `eventDecimalLatitude`, and `eventDecimalLongitude`.
+| File | Contents |
+|------|----------|
+| `Peggy_EOs_Germplasm_w_lat_long_from_Events_30Apr2026.csv` | Germplasm collection events with `locationID`, `EOCode`, `eventDecimalLatitude`, `eventDecimalLongitude` |
+
+All derived outputs in `data/` (distance matrices, group assignments, BL assignments, drift indices) contain no geographic coordinates and are publicly available in this repository. To request access to the input data, contact the author.
