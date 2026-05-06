@@ -1,0 +1,16 @@
+# Raw input data with geographic coordinates — kept local only
+data/Peggy_EOs_Germplasm_w_lat_long_from_Events_*.csv
+data/EO_location_groups.csv
+
+# macOS metadata
+.DS_Store
+**/.DS_Store
+
+# R session artifacts
+.Rhistory
+.RData
+.Rproj.user/
+*.Rproj
+
+# Claude Code local settings
+.claude/

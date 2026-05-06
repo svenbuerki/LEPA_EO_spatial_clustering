@@ -1,0 +1,10 @@
+"metric","value"
+"Total location pairs evaluated",741
+"Connected pairs (<=500m)",7
+"  Within-EO connections",7
+"  Between-EO connections",0
+"Isolated locations (no neighbour within 500m)",28
+"Number of geographic groups (connected components)",32
+"Groups with >1 location",4
+"Closest unconnected group pair (m)",586.3
+"Farthest connected pair (m)",493.4
