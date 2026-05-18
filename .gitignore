@@ -11,6 +11,7 @@ data/EO_location_groups.csv
 .RData
 .Rproj.user/
 *.Rproj
+Rplots.pdf
 
 # Claude Code local settings
 .claude/

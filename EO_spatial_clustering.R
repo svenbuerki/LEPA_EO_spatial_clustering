@@ -1010,3 +1010,300 @@ dev.off()
 
 message("  EO_BL_summary.csv")
 message("  EO_BL_drift_panel.pdf / .png")
+
+# ============================================================
+# 9. BUILD HULLS + LOCATION POINTS (used by Section 10 geographic map)
+# ------------------------------------------------------------
+# Per-group convex hulls + location points in UTM 32611 as sf objects,
+# consumed by the Section 10 geographic-context map.
+#
+# Reuses upstream objects:
+#   loc_hulls       — sf object with per-location convex hulls (UTM 32611)
+#   loc_centroids   — per-location data.frame with lat/lon/group/BL/pop_size
+#   grp_pop         — group-level total pop_size (summed across locations)
+#   bl_strip_cols   — named vector mapping "BL1"..."BL5" → Set1 hex colours
+# ============================================================
+
+# Per-group convex hull as the UNION of member-location hulls in UTM space.
+grp_hulls <- do.call(rbind, lapply(
+  sort(unique(loc_hulls$group)),
+  function(gid) {
+    sub_h <- loc_hulls[as.integer(as.character(loc_hulls$group)) == gid, ]
+    if (nrow(sub_h) == 0) return(NULL)
+    # Union the location hulls then take convex hull of the result so that
+    # groups with multiple non-overlapping locations get a single polygon
+    # spanning all member locations.
+    union_geom <- st_union(sub_h)
+    hull       <- st_convex_hull(union_geom)
+    # Some groups have a single point/linestring location — buffer slightly so
+    # the hull is a non-degenerate polygon for plotting.
+    if (st_geometry_type(hull) %in% c("POINT", "LINESTRING", "MULTIPOINT")) {
+      hull <- st_buffer(hull, dist = 50)  # 50 m visual buffer
+    }
+    st_sf(
+      group      = gid,
+      BL         = bl_name_map[as.character(cl_assign[gid])],
+      n_loc      = nrow(sub_h),
+      pop_size   = grp_pop$pop_size[grp_pop$group == gid],
+      geometry   = hull
+    )
+  }
+))
+
+# Locations as sf points in UTM (for matching CRS with the hulls)
+loc_pts <- st_as_sf(
+  loc_centroids[!is.na(loc_centroids$BL) & !is.na(loc_centroids$pop_size), ],
+  coords = c("lon", "lat"),
+  crs    = 4326
+)
+loc_pts <- st_transform(loc_pts, crs = 32611)
+
+# Ensure BL is a factor with the locked BL1..BL5 ordering so the legend is
+# stable and the colour mapping matches bl_strip_cols.
+bl_levels <- names(bl_strip_cols)
+grp_hulls$BL <- factor(grp_hulls$BL, levels = bl_levels)
+loc_pts$BL   <- factor(loc_pts$BL,   levels = bl_levels)
+
+# ============================================================
+# 10. GEOGRAPHIC CONTEXT MAP — topo background + Snake River + cities
+# ------------------------------------------------------------
+# Uses grp_hulls, loc_pts, bl_levels built in Section 9 and adds geographic
+# context overlays for audiences who need to see the populations in their
+# landscape setting:
+#   - Topographic background (DEM warm-sepia colour ramp) from elevatr
+#   - Snake River centreline from Natural Earth (scale = 10, highest detail)
+#   - Four reference cities: Boise, Mountain Home, Glenns Ferry, New Plymouth
+#
+# NOTE: with cities + Snake River + topography visible, the populations are
+# locatable to anyone with an Idaho map. This is intentional — the figure
+# is designed for audiences where geographic context is essential
+# (conservation agencies, recovery-planning meetings). If you need an
+# anonymised version for broader sharing, comment out the city/river/topo
+# layers below and keep only the BL hulls + location points.
+#
+# Reuses: loc_pts, grp_hulls, bl_strip_cols, bl_levels (built in Section 9).
+# ============================================================
+
+library(elevatr)
+library(tidyterra)
+library(rnaturalearth)
+
+# terra ships without a PROJ data dir on some R installs; point it at sf's
+# bundled proj.db so terra::project() can find the CRS database.
+if (Sys.getenv("PROJ_LIB") == "") {
+  sf_proj <- system.file("proj", package = "sf")
+  if (dir.exists(sf_proj)) Sys.setenv(PROJ_LIB = sf_proj)
+}
+
+# Reference cities — coordinates rounded to ~10 m precision (sufficient for
+# city-centre markers; not population-locating accuracy).
+cities <- data.frame(
+  name = c("Boise", "Mountain Home", "Glenns Ferry", "New Plymouth"),
+  lon  = c(-116.2023, -115.6912, -115.3022, -116.8195),
+  lat  = c(  43.6150,   43.1326,   42.9551,   43.9685)
+)
+cities_sf <- st_as_sf(cities, coords = c("lon", "lat"), crs = 4326)
+
+# Build the bounding box from BL populations + the four reference cities so
+# the topo background extends to include the cities without cropping any
+# populations. Reproject to UTM 32611 to match loc_pts and grp_hulls.
+all_pts_wgs <- rbind(
+  st_transform(loc_pts, 4326)[, "geometry"],
+  cities_sf[, "geometry"]
+)
+bbox_wgs <- st_bbox(all_pts_wgs)
+# Expand by ~10 km in degrees (~0.1°) so the framing isn't tight
+pad_deg  <- 0.1
+bbox_wgs[c("xmin", "ymin")] <- bbox_wgs[c("xmin", "ymin")] - pad_deg
+bbox_wgs[c("xmax", "ymax")] <- bbox_wgs[c("xmax", "ymax")] + pad_deg
+
+# Fetch DEM tiles from AWS Terrain Tiles via elevatr (zoom 9 ≈ ~500 m
+# resolution — coarse enough to render fast, fine enough for landscape context).
+# get_elev_raster requires an sf object (not bare sfc), so wrap the bbox.
+bbox_sf <- st_as_sf(
+  data.frame(id = 1L),
+  geometry = st_sfc(st_as_sfc(bbox_wgs)[[1]], crs = 4326)
+)
+dem_wgs <- get_elev_raster(locations = bbox_sf, z = 9, clip = "bbox",
+                           prj = "EPSG:4326")
+dem_utm <- terra::project(terra::rast(dem_wgs), "EPSG:32611",
+                          method = "bilinear")
+
+# Snake River from Natural Earth (scale 10 = highest detail open dataset)
+rivers <- ne_download(scale = 10, type = "rivers_lake_centerlines",
+                      category = "physical", returnclass = "sf")
+snake  <- rivers[grepl("Snake", rivers$name, ignore.case = TRUE) |
+                 grepl("Snake", rivers$name_en, ignore.case = TRUE), ]
+snake_utm <- st_transform(snake, 32611)
+snake_utm <- st_crop(snake_utm, st_bbox(dem_utm))
+
+# Reproject cities to UTM
+cities_utm <- st_transform(cities_sf, 32611)
+
+# BL-level convex hulls — the envelope of ALL locations within each BL.
+# These are drawn UNDER the group hulls with a dashed outline to give a
+# visual sense of each lineage's overall geographic footprint.
+bl_hulls <- do.call(rbind, lapply(bl_levels, function(bl) {
+  sub_pts <- loc_pts[loc_pts$BL == bl, ]
+  if (nrow(sub_pts) < 1) return(NULL)
+  union_pts <- st_union(sub_pts)
+  hull <- st_convex_hull(union_pts)
+  # Degenerate cases (single point, 2-point linestring) — buffer so we always
+  # get a non-trivial polygon for plotting.
+  if (st_geometry_type(hull) %in% c("POINT", "MULTIPOINT", "LINESTRING")) {
+    hull <- st_buffer(hull, dist = 600)
+  }
+  st_sf(BL = factor(bl, levels = bl_levels), geometry = hull)
+}))
+
+# Extract city coordinates as a plain data.frame for ggrepel
+city_coords <- as.data.frame(st_coordinates(cities_utm))
+city_coords$name <- cities_utm$name
+
+p_bl_context <- ggplot() +
+  # 1. Topographic background — warm sepia / earth-tone ramp.
+  # Classical Imhof-style hypsometric look (cream lowlands → tan mid →
+  # dark brown highlands) WITHOUT green: the BL Set1 palette includes
+  # green (BL3) and standard hypsometric palettes start with green for
+  # lowlands, which conflicts with the BL3 thematic layer. Earth tones
+  # also avoid clashing with BL1 (red) and BL5 (orange) because they
+  # sit in a different region of colour space (low chroma, dark values).
+  geom_spatraster(data = dem_utm, maxcell = 5e5) +
+  scale_fill_gradientn(
+    colours  = c("#fff8e7", "#f0d9a8", "#d4a574", "#a87545", "#6b4423", "#3d2817"),
+    name     = "Elevation (m)",
+    na.value = NA,
+    guide    = guide_colorbar(barheight = unit(3.2, "cm"),
+                              barwidth  = unit(0.4, "cm"),
+                              order     = 3)
+  ) +
+  # 2. Snake River — distinctive blue, slightly thick. Map the colour to a
+  # single-level factor so a legend swatch appears (rather than hard-coding
+  # show.legend = FALSE).
+  geom_sf(data = snake_utm,
+          aes(color = "Snake River"),
+          linewidth = 0.8, alpha = 0.85,
+          show.legend = "line") +
+  scale_color_manual(values = c("Snake River" = "#1f77b4"),
+                     name   = "Map features",
+                     guide  = guide_legend(order = 4,
+                                           override.aes = list(linewidth = 1.2))) +
+  ggnewscale::new_scale_color() +
+  # 3. New scale for BL fills (geom_sf hulls + points)
+  ggnewscale::new_scale_fill() +
+  ggnewscale::new_scale_color() +
+  # 4. BL-level hulls — dashed outline, no fill (envelope of each lineage)
+  geom_sf(
+    data        = bl_hulls,
+    aes(color = BL),
+    fill        = NA,
+    linewidth   = 0.7,
+    linetype    = "dashed",
+    show.legend = FALSE
+  ) +
+  # 5. Group convex hulls
+  geom_sf(
+    data        = grp_hulls,
+    aes(fill = BL, color = BL),
+    alpha       = 0.28,
+    linewidth   = 0.55,
+    show.legend = TRUE
+  ) +
+  # 6. Location points sized by census population, FILLED with BL colour
+  geom_sf(
+    data        = loc_pts,
+    aes(size = pop_size, fill = BL),
+    shape       = 21,
+    color       = "white",
+    stroke      = 0.8,
+    alpha       = 0.95
+  ) +
+  scale_fill_manual(values = bl_strip_cols, name = "Bottleneck lineage",
+                    drop = FALSE) +
+  scale_color_manual(values = bl_strip_cols, name = "Bottleneck lineage",
+                     drop = FALSE) +
+  scale_size_continuous(
+    name   = "Census population size\n(fertile + vegetative)",
+    range  = c(2, 11),
+    breaks = c(50, 200, 500, 1000, 2000),
+    labels = scales::comma
+  ) +
+  # 7. Reference cities — solid black square + repelled labels (avoids overlap)
+  geom_sf(data = cities_utm, shape = 22, fill = "black", color = "white",
+          size = 3.2, stroke = 0.5) +
+  ggrepel::geom_text_repel(
+    data            = city_coords,
+    aes(x = X, y = Y, label = name),
+    fontface        = "bold",
+    size            = 3.3,
+    color           = "grey15",
+    bg.color        = "white",
+    bg.r            = 0.12,
+    point.padding   = unit(0.45, "lines"),
+    box.padding     = unit(0.40, "lines"),
+    nudge_y         = 3500,
+    min.segment.length = 0.2,
+    segment.color   = "grey35",
+    segment.size    = 0.3,
+    max.overlaps    = Inf,
+    seed            = 42
+  ) +
+  guides(
+    fill  = guide_legend(order = 1, override.aes = list(alpha = 0.55, size = 5,
+                                                        shape = 22, color = NA)),
+    color = "none",
+    size  = guide_legend(order = 2,
+                         override.aes = list(shape = 21, fill = "grey60",
+                                             color = "white", stroke = 0.6))
+  ) +
+  labs(
+    title    = paste0(
+      "Geographic context of the five independent bottleneck lineages ",
+      "of Lepidium papilliferum"
+    ),
+    subtitle = paste0(
+      "Topographic background (DEM, AWS Terrain Tiles)  |  ",
+      "Snake River (Natural Earth, scale 10)  |  ",
+      "Reference cities as black squares"
+    ),
+    caption = paste0(
+      "Dashed envelopes = BL-level convex hulls (encompassing every ",
+      "population in the lineage).  Filled hulls = group-level habitat ",
+      "footprint (locations connected within 500 m pollinator threshold).  ",
+      "Points = sampling locations sized by census population size ",
+      "(fertile + vegetative), filled with parent BL colour.  ",
+      "Locked Set1 palette: BL1 red, BL2 blue, BL3 green, BL4 purple, BL5 orange.\n",
+      "Map shows full geographic context (cities, river, topography) for ",
+      "audiences requiring landscape setting; population coordinates are ",
+      "locatable from this figure and the figure should be shared accordingly."
+    ),
+    x = NULL, y = NULL
+  ) +
+  coord_sf(crs = 32611, expand = FALSE) +
+  theme_minimal(base_size = 11) +
+  theme(
+    plot.title       = element_text(face = "bold", size = 13, hjust = 0.5,
+                                    margin = margin(b = 4)),
+    plot.subtitle    = element_text(size = 10, color = "grey30", hjust = 0.5,
+                                    margin = margin(b = 8)),
+    plot.caption     = element_text(size = 8, color = "grey45", hjust = 0.5,
+                                    margin = margin(t = 10)),
+    legend.position  = "right",
+    legend.title     = element_text(size = 10, face = "bold"),
+    legend.text      = element_text(size = 9),
+    axis.text        = element_text(size = 7, color = "grey50"),
+    panel.grid.major = element_line(color = "grey85", linewidth = 0.2),
+    plot.background  = element_rect(fill = "white", color = NA),
+    plot.margin      = margin(14, 14, 14, 14)
+  )
+
+cairo_pdf(file.path(out_dir, "EO_BL_geographic_context_map.pdf"),
+          width = 13, height = 10)
+print(p_bl_context)
+dev.off()
+png(file.path(out_dir, "EO_BL_geographic_context_map.png"),
+    width = 13, height = 10, units = "in", res = 300, type = "cairo")
+print(p_bl_context)
+dev.off()
+
+message("  EO_BL_geographic_context_map.pdf / .png")
