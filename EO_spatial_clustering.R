@@ -810,6 +810,16 @@ if (is.null(all_near2)) all_near2 <- data.frame()
 all_far2   <- do.call(rbind, Filter(Negate(is.null), bl_far_list2))
 if (is.null(all_far2))  all_far2  <- data.frame()
 
+# Reorder BLs by within-BL connectivity (descending), then by population size.
+# Connectivity score = locations in multi-location groups = n_locations - n_groups.
+# This puts the three "connected" BLs first (top row of facet) and the two
+# fully isolated BLs second (bottom row) \u2014 supporting predictions of where
+# pollinator-mediated gene flow buffers drift vs where it does not.
+bl_summary <- bl_summary[
+  order(-(bl_summary$n_locations - bl_summary$n_groups),
+        -bl_summary$total_pop_size),
+]
+
 # Facet labels: BL name + summary statistics
 bl_labels2 <- setNames(
   sprintf(
@@ -837,10 +847,10 @@ p_bl_net <- ggplot(all_nodes2, aes(x = x, y = y)) +
     ))
     list(
       geom_segment(data = all_far2_min,
-                   aes(x = x_A, y = y_A, xend = x_B, yend = y_B),
+                   aes(x = x_A, y = y_A, xend = x_B, yend = y_B,
+                       linetype = "Closest distance >2 km\nbetween isolated populations"),
                    color = "grey55", linewidth = 0.6,
-                   linetype = "dashed", alpha = 0.80,
-                   inherit.aes = FALSE),
+                   alpha = 0.80, inherit.aes = FALSE),
       geom_label(data = all_far2_min,
                  aes(x = mid_x, y = mid_y,
                      label = paste0(round(distance_m / 1000, 1), " km")),
@@ -853,11 +863,23 @@ p_bl_net <- ggplot(all_nodes2, aes(x = x, y = y)) +
   # 1. Near-miss edges — solid grey, behind nodes
   {if (nrow(all_near2) > 0)
     geom_segment(data = all_near2,
-                 aes(x = x_A, y = y_A, xend = x_B, yend = y_B),
-                 color       = "grey55", linewidth = 0.6,
-                 linetype    = "solid", alpha = 0.70,
+                 aes(x = x_A, y = y_A, xend = x_B, yend = y_B,
+                     linetype = "Near-miss (>500 m to ≤2 km)"),
+                 color = "grey55", linewidth = 0.6, alpha = 0.70,
                  inherit.aes = FALSE)
   } +
+
+  scale_linetype_manual(
+    name   = "Disconnected pairs",
+    values = c(
+      "Near-miss (>500 m to ≤2 km)"                       = "solid",
+      "Closest distance >2 km\nbetween isolated populations"   = "dashed"
+    ),
+    breaks = c(
+      "Near-miss (>500 m to ≤2 km)",
+      "Closest distance >2 km\nbetween isolated populations"
+    )
+  ) +
 
 
   # 2. Nodes: shape = isolation status; fill = drift index; size = pop size
@@ -927,16 +949,18 @@ p_bl_net <- ggplot(all_nodes2, aes(x = x, y = y)) +
   ) +
 
   guides(
-    fill  = guide_colorbar(order = 1),
-    size  = guide_legend(order = 2,
-                         override.aes = list(shape = 21, fill = "grey60")),
-    shape = guide_legend(order = 3,
-                         override.aes = list(fill = "grey60", size = 4)),
-    color = guide_legend(order = 4,
-                         override.aes = list(linewidth = 1.5))
+    fill     = guide_colorbar(order = 1),
+    size     = guide_legend(order = 2,
+                            override.aes = list(shape = 21, fill = "grey60")),
+    shape    = guide_legend(order = 3,
+                            override.aes = list(fill = "grey60", size = 4)),
+    color    = guide_legend(order = 4,
+                            override.aes = list(linewidth = 1.5)),
+    linetype = guide_legend(order = 5,
+                            override.aes = list(color = "grey55", linewidth = 0.8))
   ) +
 
-  facet_wrap(~ BL_label, nrow = 1, scales = "free") +
+  facet_wrap(~ BL_label, nrow = 2, scales = "free") +
 
   labs(
     title    = paste0(
@@ -945,11 +969,7 @@ p_bl_net <- ggplot(all_nodes2, aes(x = x, y = y)) +
     ),
     subtitle = paste0(
       "C3 Hypothesis \u2014 Stage 4  |  39 locations in 5 BLs  |  ",
-      "Fill = drift index (red = strong drift; blue = weak drift)  |  ",
-      "Node size = population size  |  \u25c6 connected  \u25cf isolated\n",
-      "Colored solid: \u2264500 m (connected, pollinator range) \u2014 ",
-      "Grey solid: >500 m to \u22642 km (near-miss, no gene flow) \u2014 ",
-      "Dashed + label: shortest distance >2 km between disconnected groups within BL"
+      "Panels ordered by within-BL connectivity (top row: connected; bottom row: isolated)"
     ),
     caption = paste0(
       "No between-BL connections exist (all BLs separated by >10 km).  ",
@@ -984,13 +1004,27 @@ p_bl_net <- ggplot(all_nodes2, aes(x = x, y = y)) +
 # Strip grob tree: strip gtable → grobs[[1]] (gTree) → $children → background rect
 # (named "strip.background.x..rect.*" in ggplot2 >= 3.4).
 gt_bl <- ggplotGrob(p_bl_net)
-strip_idx <- sort(which(grepl("^strip-t", gt_bl$layout$name)))
+# Strip names are "strip-t-{col}-{row}"; with nrow>1 the order in gt_bl$layout
+# does not match panel order, so we must parse (col, row) and compute the
+# panel index explicitly. Panel index = (row - 1) * ncol + col, which matches
+# ggplot's left-to-right, top-to-bottom panel numbering.
+strip_rows <- which(grepl("^strip-t", gt_bl$layout$name))
+strip_names <- gt_bl$layout$name[strip_rows]
+parsed <- do.call(rbind, lapply(
+  regmatches(strip_names, regexec("^strip-t-(\\d+)-(\\d+)$", strip_names)),
+  function(m) as.integer(m[2:3])
+))
+strip_col <- parsed[, 1]
+strip_row <- parsed[, 2]
+n_cols <- max(strip_col)
+panel_idx <- (strip_row - 1L) * n_cols + strip_col
 bl_facet_order <- levels(all_nodes2$BL_label)
 bl_name_order  <- sub("\\s.*", "", bl_facet_order)   # extract "BL1", "BL2", …
-for (i in seq_along(strip_idx)) {
-  j     <- strip_idx[i]
-  col_i <- adjustcolor(bl_strip_cols[bl_name_order[i]], alpha.f = 0.45)
-  bdr_i <- adjustcolor(bl_strip_cols[bl_name_order[i]], alpha.f = 0.85)
+for (i in seq_along(strip_rows)) {
+  j     <- strip_rows[i]
+  p     <- panel_idx[i]
+  col_i <- adjustcolor(bl_strip_cols[bl_name_order[p]], alpha.f = 0.45)
+  bdr_i <- adjustcolor(bl_strip_cols[bl_name_order[p]], alpha.f = 0.85)
   inner <- gt_bl$grobs[[j]]$grobs[[1]]          # the gTree inside the strip gtable
   bg_nm <- grep("^strip\\.background", names(inner$children), value = TRUE)[1]
   if (!is.na(bg_nm)) {
@@ -1000,11 +1034,59 @@ for (i in seq_along(strip_idx)) {
   }
 }
 
-cairo_pdf(file.path(out_dir, "EO_BL_drift_panel.pdf"), width = 24, height = 8)
+# Move the legend into the empty bottom-right cell (panel-3-2 in a 2x3 layout
+# with only 5 panels), reshaped from a 5-row vertical stack into a 2-row × 3-col
+# grid so it fills the cell width-wise instead of running off the bottom.
+guide_idx_all <- which(grepl("^guide-box", gt_bl$layout$name))
+empty_panel   <- gt_bl$layout[gt_bl$layout$name == "panel-3-2", ]
+empty_strip   <- gt_bl$layout[gt_bl$layout$name == "strip-t-3-2", ]
+if (length(guide_idx_all) > 0 && nrow(empty_panel) == 1) {
+  guide_box_orig <- gt_bl$grobs[[guide_idx_all[1]]]
+  # Extract the individual guide subgrobs (one per scale) from the vertical
+  # stack, then re-tile them as 2 rows × ceil(n/2) cols.
+  indiv_idx   <- which(guide_box_orig$layout$name == "guides")
+  indiv_grobs <- guide_box_orig$grobs[indiv_idx]
+  n_g         <- length(indiv_grobs)
+  n_rows_new  <- 2
+  n_cols_new  <- ceiling(n_g / n_rows_new)
+  guide_grob  <- gtable::gtable(
+    widths  = grid::unit(rep(1, n_cols_new), "null"),
+    heights = grid::unit(rep(1, n_rows_new), "null"),
+    name    = "guide-box-2row"
+  )
+  for (i in seq_along(indiv_grobs)) {
+    r_i <- ((i - 1) %/% n_cols_new) + 1L
+    c_i <- ((i - 1) %%  n_cols_new) + 1L
+    guide_grob <- gtable::gtable_add_grob(
+      guide_grob, indiv_grobs[[i]],
+      t = r_i, l = c_i, clip = "off",
+      name = paste0("guide-", i)
+    )
+  }
+  # Blank out the existing guide-box(es) and the unused strip header
+  for (gi in guide_idx_all) gt_bl$grobs[[gi]] <- grid::nullGrob()
+  empty_strip_idx <- which(gt_bl$layout$name == "strip-t-3-2")
+  if (length(empty_strip_idx) > 0)
+    gt_bl$grobs[[empty_strip_idx[1]]] <- grid::nullGrob()
+  # Insert the reshaped legend spanning strip row + panel row of the empty cell
+  t_pos <- if (nrow(empty_strip) == 1) empty_strip$t else empty_panel$t
+  gt_bl <- gtable::gtable_add_grob(
+    gt_bl, guide_grob,
+    t = t_pos, l = empty_panel$l,
+    b = empty_panel$b, r = empty_panel$r,
+    name = "guide-box-empty-cell",
+    clip = "off"
+  )
+  # Collapse the now-unused legend column on the right
+  guide_col <- gt_bl$layout$l[guide_idx_all[1]]
+  gt_bl$widths[guide_col] <- grid::unit(0, "cm")
+}
+
+cairo_pdf(file.path(out_dir, "EO_BL_drift_panel.pdf"), width = 20, height = 14)
 grid::grid.draw(gt_bl)
 dev.off()
 png(file.path(out_dir, "EO_BL_drift_panel.png"),
-    width = 24, height = 8, units = "in", res = 300, type = "cairo")
+    width = 20, height = 14, units = "in", res = 300, type = "cairo")
 grid::grid.draw(gt_bl)
 dev.off()
 
@@ -1307,3 +1389,158 @@ print(p_bl_context)
 dev.off()
 
 message("  EO_BL_geographic_context_map.pdf / .png")
+
+# ============================================================
+# 10c. GEOGRAPHIC OVERVIEW MAP — context-first, no BL coloring
+# ------------------------------------------------------------
+# Companion to the BL context map (Section 10) intended to be shown FIRST
+# in the README/report: every sampling location is plotted in a uniform
+# colour, with the 10 largest populations labelled in the same style as
+# the BL-panel network figure (white-fill geom_label_repel with EOCode,
+# locationID, and census size). This gives the audience a neutral
+# geographic introduction to where the species occurs before the BL
+# stratification is introduced.
+#
+# Reuses: dem_utm, snake_utm, cities_utm, city_coords, loc_pts
+# (all built in Section 10).
+# ============================================================
+
+N_LABELED <- 10L  # how many of the largest populations to label
+
+# Build label data frame in BL-panel format ("EOCode\n(locationID)\nN ind.")
+loc_coords <- as.data.frame(st_coordinates(loc_pts))
+loc_coords$EOCode     <- loc_pts$EOCode
+loc_coords$locationID <- loc_pts$locationID
+loc_coords$pop_size   <- loc_pts$pop_size
+loc_coords$label      <- paste0(
+  loc_coords$EOCode, "\n(", loc_coords$locationID, ")\n",
+  loc_coords$pop_size, " ind."
+)
+top_locs <- loc_coords[order(-loc_coords$pop_size), ][seq_len(min(N_LABELED, nrow(loc_coords))), ]
+
+p_overview <- ggplot() +
+  # 1. Topographic background — same warm sepia ramp as Section 10
+  geom_spatraster(data = dem_utm, maxcell = 5e5) +
+  scale_fill_gradientn(
+    colours  = c("#fff8e7", "#f0d9a8", "#d4a574", "#a87545", "#6b4423", "#3d2817"),
+    name     = "Elevation (m)",
+    na.value = NA,
+    guide    = guide_colorbar(barheight = unit(3.2, "cm"),
+                              barwidth  = unit(0.4, "cm"),
+                              order     = 2)
+  ) +
+  # 2. Snake River
+  geom_sf(data = snake_utm,
+          aes(color = "Snake River"),
+          linewidth = 0.8, alpha = 0.85,
+          show.legend = "line") +
+  scale_color_manual(values = c("Snake River" = "#1f77b4"),
+                     name   = "Map features",
+                     guide  = guide_legend(order = 3,
+                                           override.aes = list(linewidth = 1.2))) +
+  ggnewscale::new_scale_fill() +
+  # 3. Location points — uniform dark fill, sized by census size
+  geom_sf(
+    data        = loc_pts,
+    aes(size = pop_size),
+    shape       = 21,
+    fill        = "grey20",
+    color       = "white",
+    stroke      = 0.7,
+    alpha       = 0.92,
+    show.legend = TRUE
+  ) +
+  scale_size_continuous(
+    name   = "Census population size\n(fertile + vegetative)",
+    range  = c(2, 11),
+    breaks = c(50, 200, 500, 1000, 2000),
+    labels = scales::comma,
+    guide  = guide_legend(order = 1,
+                          override.aes = list(shape = 21, fill = "grey20",
+                                              color = "white", stroke = 0.6))
+  ) +
+  # 4. Labels for the N largest populations — BL-panel style
+  ggrepel::geom_label_repel(
+    data            = top_locs,
+    aes(x = X, y = Y, label = label),
+    size            = 2.5,
+    fill            = "white",
+    color           = "grey15",
+    label.size      = NA,
+    alpha           = 0.92,
+    lineheight      = 0.85,
+    box.padding     = unit(0.55, "lines"),
+    point.padding   = unit(0.35, "lines"),
+    min.segment.length = 0.1,
+    segment.color   = "grey35",
+    segment.size    = 0.3,
+    max.overlaps    = Inf,
+    seed            = 42
+  ) +
+  # 5. Reference cities — solid black square + repelled labels
+  geom_sf(data = cities_utm, shape = 22, fill = "black", color = "white",
+          size = 3.2, stroke = 0.5) +
+  ggrepel::geom_text_repel(
+    data            = city_coords,
+    aes(x = X, y = Y, label = name),
+    fontface        = "bold",
+    size            = 3.3,
+    color           = "grey15",
+    bg.color        = "white",
+    bg.r            = 0.12,
+    point.padding   = unit(0.45, "lines"),
+    box.padding     = unit(0.40, "lines"),
+    nudge_y         = 3500,
+    min.segment.length = 0.2,
+    segment.color   = "grey35",
+    segment.size    = 0.3,
+    max.overlaps    = Inf,
+    seed            = 42
+  ) +
+  labs(
+    title    = "Geographic overview of Lepidium papilliferum populations",
+    subtitle = paste0(
+      nrow(loc_pts), " sampling locations across the species range  |  ",
+      "Topographic background (DEM, AWS Terrain Tiles)  |  ",
+      "Snake River (Natural Earth, scale 10)  |  ",
+      "Reference cities as black squares"
+    ),
+    caption = paste0(
+      "Points = sampling locations sized by census population size ",
+      "(fertile + vegetative).  ",
+      "The ", N_LABELED, " largest populations are labelled with EO code, ",
+      "internal location ID, and census size.  ",
+      "Population locations are not accurately represented in this figure: ",
+      "Lepidium papilliferum is a federally threatened species and exact ",
+      "coordinates are confidential and not shared online."
+    ),
+    x = NULL, y = NULL
+  ) +
+  coord_sf(crs = 32611, expand = FALSE) +
+  theme_minimal(base_size = 11) +
+  theme(
+    plot.title       = element_text(face = "bold", size = 13, hjust = 0.5,
+                                    margin = margin(b = 4)),
+    plot.subtitle    = element_text(size = 10, color = "grey30", hjust = 0.5,
+                                    margin = margin(b = 8)),
+    plot.caption     = element_text(size = 8, color = "grey45", hjust = 0.5,
+                                    margin = margin(t = 10)),
+    legend.position  = "right",
+    legend.title     = element_text(size = 10, face = "bold"),
+    legend.text      = element_text(size = 9),
+    axis.text        = element_text(size = 7, color = "grey50"),
+    panel.grid.major = element_line(color = "grey85", linewidth = 0.2),
+    plot.background  = element_rect(fill = "white", color = NA),
+    plot.margin      = margin(14, 14, 14, 14)
+  )
+
+cairo_pdf(file.path(out_dir, "EO_geographic_overview_map.pdf"),
+          width = 13, height = 10)
+print(p_overview)
+dev.off()
+png(file.path(out_dir, "EO_geographic_overview_map.png"),
+    width = 13, height = 10, units = "in", res = 300, type = "cairo")
+print(p_overview)
+dev.off()
+
+message("  EO_geographic_overview_map.pdf / .png")

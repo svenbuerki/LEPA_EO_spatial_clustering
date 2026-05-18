@@ -37,6 +37,7 @@ LEPA_EO_spatial_clustering/
 │   ├── EO_BL_summary.csv            # BL-level aggregated statistics
 │   └── EO_group_BL_summary.csv      # Group-to-BL key with population IDs (cross-reference for SRK analyses)
 └── figures/
+    ├── EO_geographic_overview_map.png    # Context-first overview: all 39 locations in one colour, 10 largest labelled
     ├── EO_clustering_dendrogram.png      # Ward's D2 dendrogram with BL shading + DI strip
     ├── EO_BL_geographic_context_map.png  # Single-panel overview, all 5 BLs, with topo background + Snake River + reference cities
     └── EO_BL_drift_panel.png             # Five-panel BL network figures with drift index
@@ -207,7 +208,7 @@ Group union areas span four orders of magnitude (0 m² to ~19.6 ha). The full ra
 
 26 of 32 groups (81%) have DI > 0.95 and occupy less than 1 ha. The three lowest-drift groups are EO27 group 11 (19.6 ha), EO32 group 6 (14.6 ha), and EO76 group 2 (7.1 ha) — the only groups where habitat area is large enough to buffer against the most extreme drift effects.
 
-See Figure 1 (dendrogram + DI strip) for the full ranking visualised alongside the BL clustering, Figure 2 (geographic context map) for the spatial arrangement of BLs, and Figure 3 (BL drift panels) for the per-lineage network view.
+See Figure 1 (geographic overview) for a neutral introduction to where the species occurs, Figure 2 (dendrogram + DI strip) for the full ranking visualised alongside the BL clustering, Figure 3 (BL geographic context map) for the spatial arrangement of BLs, and Figure 4 (BL drift panels) for the per-lineage network view.
 
 ### Independent bottleneck lineages — BL summary
 
@@ -266,23 +267,29 @@ The table below maps each geographic group and its constituent `locationID` valu
 
 ## Figures
 
-### Figure 1 — Hierarchical clustering dendrogram with drift index strip
+### Figure 1 — Geographic overview
+
+![Context-first geographic overview of all 39 populations, 10 largest labelled](figures/EO_geographic_overview_map.png)
+
+**Figure 1.** Context-first geographic overview of all 39 sampling locations across the species range, plotted in a single neutral colour before any bottleneck-lineage stratification is introduced. **Points** are sampling locations, sized by census population size (fertile + vegetative), filled uniformly in dark grey to keep the focus on the geographic distribution rather than on lineage membership. The **ten largest populations** are labelled with EO code, internal location ID, and census size using the same white-fill label style as Figure 4 (BL drift panels), so the same populations can be recognised across figures. **Topographic background** is a DEM (AWS Terrain Tiles via `elevatr`, ~500 m resolution) rendered with a warm sepia ramp. The **Snake River** centreline (Natural Earth scale 10) appears as a blue line and is identified in the "Map features" legend. **Reference cities** (Boise, Mountain Home, Glenns Ferry, New Plymouth) are marked with black squares and labelled with repelled text. **Population locations are not accurately represented:** *Lepidium papilliferum* is a federally threatened species and exact coordinates are confidential and not shared online.
+
+### Figure 2 — Hierarchical clustering dendrogram with drift index strip
 
 ![Ward's D2 dendrogram with BL shading and drift index color strip](figures/EO_clustering_dendrogram.png)
 
-**Figure 1.** Ward's D2 hierarchical clustering of 32 geographic group centroids. Each leaf is labeled as G{n} | EO | pop.{IDs}. Background shading and `rect.hclust` borders delimit the five independent bottleneck lineages (BL1–BL5); the dashed line marks the k = 5 cut. The lower panel shows a leaf-aligned drift index (DI) color strip (blue = DI 0, large habitat, weak drift; red = DI 1, small habitat, strong drift) with a gradient legend in the right margin. Groups with DI ≤ 0.75 are labeled.
+**Figure 2.** Ward's D2 hierarchical clustering of 32 geographic group centroids. Each leaf is labeled as G{n} | EO | pop.{IDs}. Background shading and `rect.hclust` borders delimit the five independent bottleneck lineages (BL1–BL5); the dashed line marks the k = 5 cut. The lower panel shows a leaf-aligned drift index (DI) color strip (blue = DI 0, large habitat, weak drift; red = DI 1, small habitat, strong drift) with a gradient legend in the right margin. Groups with DI ≤ 0.75 are labeled.
 
-### Figure 2 — BL geographic context map
+### Figure 3 — BL geographic context map
 
 ![Single-panel overview with topographic background, Snake River, and reference cities](figures/EO_BL_geographic_context_map.png)
 
-**Figure 2.** Single-panel overview map showing all five bottleneck lineages simultaneously, with geographic context overlays for audiences who need to see the populations in their landscape setting. **Dashed coloured envelopes** are BL-level convex hulls (the geographic footprint of every location within a lineage); **filled coloured hulls** are group-level convex hulls (locations connected within the 500 m pollinator threshold). **Points** are sampling locations, sized by census population size (fertile + vegetative) and filled with the parent BL colour (Set1 palette: BL1 red, BL2 blue, BL3 green, BL4 purple, BL5 orange — identical to Figure 1). **Topographic background** is a DEM (AWS Terrain Tiles via `elevatr`, ~500 m resolution) rendered with a warm sepia ramp (cream lowlands → tan midlands → dark brown highlands; earth tones chosen to avoid colour conflict with the Set1 BL palette). The **Snake River** centreline (Natural Earth scale 10) appears as a blue line and is identified in the "Map features" legend. **Reference cities** (Boise, Mountain Home, Glenns Ferry, New Plymouth) are marked with black squares and labelled with repelled (non-overlapping) text. **Population locations are not accurately represented:** *Lepidium papilliferum* is a federally threatened species and the exact coordinates of its populations are confidential and not shared online; the points and hulls in this figure are intended to convey the spatial arrangement of bottleneck lineages relative to one another and to the regional landscape, not to enable georeferencing of individual sampling sites.
+**Figure 3.** Single-panel overview map showing all five bottleneck lineages simultaneously, with geographic context overlays for audiences who need to see the populations in their landscape setting. **Dashed coloured envelopes** are BL-level convex hulls (the geographic footprint of every location within a lineage); **filled coloured hulls** are group-level convex hulls (locations connected within the 500 m pollinator threshold). **Points** are sampling locations, sized by census population size (fertile + vegetative) and filled with the parent BL colour (Set1 palette: BL1 red, BL2 blue, BL3 green, BL4 purple, BL5 orange — identical to Figure 2). **Topographic background** is a DEM (AWS Terrain Tiles via `elevatr`, ~500 m resolution) rendered with a warm sepia ramp (cream lowlands → tan midlands → dark brown highlands; earth tones chosen to avoid colour conflict with the Set1 BL palette). The **Snake River** centreline (Natural Earth scale 10) appears as a blue line and is identified in the "Map features" legend. **Reference cities** (Boise, Mountain Home, Glenns Ferry, New Plymouth) are marked with black squares and labelled with repelled (non-overlapping) text. **Population locations are not accurately represented:** *Lepidium papilliferum* is a federally threatened species and the exact coordinates of its populations are confidential and not shared online; the points and hulls in this figure are intended to convey the spatial arrangement of bottleneck lineages relative to one another and to the regional landscape, not to enable georeferencing of individual sampling sites.
 
-### Figure 3 — BL drift panels
+### Figure 4 — BL drift panels
 
 ![Five-panel BL network figure with drift index](figures/EO_BL_drift_panel.png)
 
-**Figure 3.** Five-panel network figure, one panel per bottleneck lineage (BL1–BL5). Within each panel, solid edges indicate connected pairs (≤500 m) and dashed edges indicate near-miss pairs (500 m–2 km). Node fill encodes drift index on the blue (DI = 0, weak drift) → white → red (DI = 1, strong drift) gradient matching Figure 1. Node size encodes total population size; node shape (diamond = connected, circle = isolated) distinguishes locations with at least one neighbour within 500 m from fully isolated locations. Strip header colors are matched to the BL shading in Figure 1 and the hull colours in Figure 2.
+**Figure 4.** Five-panel network figure, one panel per bottleneck lineage. Panels are **ordered by within-BL connectivity** so the row above the fold (BL5, BL1, BL4) shows the three BLs that retain at least one pollinator-mediated link between populations, and the row below (BL3, BL2) shows the two BLs in which every population is fully isolated at the 500 m threshold. Within each BL, BLs are tie-broken by total population size (descending). This ordering supports predictions of S-allele diversity: connected BLs (top row) are expected to retain richer allele complements because gene flow buffers drift, whereas isolated BLs (bottom row) are predicted to be most eroded and therefore the highest-priority targets for restoration interventions. Within each panel, solid edges indicate connected pairs (≤500 m) and dashed edges indicate near-miss pairs (500 m–2 km). Node fill encodes drift index on the blue (DI = 0, weak drift) → white → red (DI = 1, strong drift) gradient matching Figure 2. Node size encodes total population size; node shape (diamond = connected, circle = isolated) distinguishes locations with at least one neighbour within 500 m from fully isolated locations. The largest populations carry the same EO code / location ID / census size labels as in Figure 1, so individual locations can be tracked across figures. Strip header colors are matched to the BL shading in Figure 2 and the hull colours in Figure 3.
 
 ---
 
