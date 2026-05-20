@@ -15,3 +15,8 @@ Rplots.pdf
 
 # Claude Code local settings
 .claude/
+
+# Presentation-only figure variants (kept local for slide decks; the captioned
+# versions in figures/ are the ones tracked in the repo).
+figures/*_presentation.png
+figures/*_presentation.pdf

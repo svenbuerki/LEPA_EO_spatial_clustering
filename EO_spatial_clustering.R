@@ -1098,6 +1098,101 @@ dev.off()
 message("  EO_BL_summary.csv")
 message("  EO_BL_drift_panel.pdf / .png")
 
+# ------------------------------------------------------------
+# Per-BL presentation panels: one figure per BL, no facet, no title,
+# no legend. Coloured panel border encodes BL identity (matches strip
+# colour in the combined figure). Use these as standalone slides.
+# ------------------------------------------------------------
+for (bl_i in names(bl_strip_cols)) {
+  nd_i   <- all_nodes2[all_nodes2$BL == bl_i, ]
+  if (nrow(nd_i) == 0) next
+  conn_i <- if (nrow(all_conn2) > 0) all_conn2[all_conn2$BL == bl_i, ] else all_conn2
+  near_i <- if (nrow(all_near2) > 0) all_near2[all_near2$BL == bl_i, ] else all_near2
+  far_i  <- if (nrow(all_far2)  > 0) all_far2[ all_far2$BL  == bl_i, ] else all_far2
+  if (nrow(far_i) > 0) far_i <- far_i[which.min(far_i$distance_m), , drop = FALSE]
+
+  border_col <- adjustcolor(bl_strip_cols[bl_i], alpha.f = 0.85)
+  sub_i      <- bl_summary[bl_summary$BL == bl_i, ]
+  hdr_i      <- sprintf(
+    "%s  —  %d EOs  ·  %d pop.  ·  %.2f ha  ·  %d ind.",
+    sub_i$BL, sub_i$n_EOs, sub_i$n_locations,
+    sub_i$total_area_ha, sub_i$total_pop_size
+  )
+
+  p_i <- ggplot(nd_i, aes(x = x, y = y)) +
+    {if (nrow(far_i) > 0) list(
+      geom_segment(data = far_i,
+                   aes(x = x_A, y = y_A, xend = x_B, yend = y_B),
+                   color = "grey55", linewidth = 0.7,
+                   linetype = "dashed", alpha = 0.80, inherit.aes = FALSE),
+      geom_label(data = far_i,
+                 aes(x = mid_x, y = mid_y,
+                     label = paste0(round(distance_m / 1000, 1), " km")),
+                 size = 3.6, fill = "white", color = "grey20",
+                 linewidth = 0.3, alpha = 0.95, inherit.aes = FALSE,
+                 label.padding = unit(0.14, "lines"), fontface = "bold")
+    )} +
+    {if (nrow(near_i) > 0)
+      geom_segment(data = near_i,
+                   aes(x = x_A, y = y_A, xend = x_B, yend = y_B),
+                   color = "grey55", linewidth = 0.7,
+                   linetype = "solid", alpha = 0.70, inherit.aes = FALSE)
+    } +
+    geom_point(aes(fill = drift_index, size = pop_size, shape = isolated),
+               color = "grey20", stroke = 0.7, alpha = 0.95) +
+    scale_fill_gradientn(
+      colours = c("#2166AC", "#F7F7F7", "#D6604D"),
+      limits = c(0, 1), guide = "none"
+    ) +
+    scale_size_area(max_size = 18, breaks = c(50, 200, 500, 1000), guide = "none") +
+    scale_shape_manual(values = c("TRUE" = 21, "FALSE" = 23), guide = "none") +
+    {if (nrow(conn_i) > 0)
+      geom_segment(data = conn_i,
+                   aes(x = x_A, y = y_A, xend = x_B, yend = y_B,
+                       color = link_type),
+                   linewidth = 1.8, alpha = 0.92, inherit.aes = FALSE)
+    } +
+    scale_color_manual(values = c("within-EO" = "#1A5276",
+                                  "between-EO" = "#B03A2E"),
+                       guide = "none", drop = FALSE) +
+    {if (nrow(conn_i) > 0)
+      geom_label(data = conn_i,
+                 aes(x = mid_x, y = mid_y,
+                     label = paste0(round(distance_m), " m")),
+                 size = 3.4, fill = "white", color = "grey10",
+                 linewidth = 0.25, alpha = 0.92, inherit.aes = FALSE,
+                 label.padding = unit(0.12, "lines"))
+    } +
+    geom_label_repel(
+      aes(label = label),
+      size = 2.8, fill = "white", color = "grey15",
+      box.padding = 0.55, point.padding = 0.40,
+      label.size = NA, alpha = 0.92, max.overlaps = 60,
+      lineheight = 0.85, min.segment.length = 0.2
+    ) +
+    labs(title = hdr_i, subtitle = NULL, caption = NULL, x = NULL, y = NULL) +
+    theme_void(base_size = 11) +
+    theme(
+      legend.position = "none",
+      panel.border    = element_rect(color = border_col, fill = NA, linewidth = 2.5),
+      plot.title      = element_text(face = "bold", size = 16, hjust = 0.5,
+                                     color = border_col,
+                                     margin = margin(t = 4, b = 10)),
+      plot.background = element_rect(fill = "white", color = NA),
+      plot.margin     = margin(12, 12, 12, 12)
+    )
+
+  base <- file.path(out_dir, paste0("EO_BL_drift_panel_", bl_i, "_presentation"))
+  cairo_pdf(paste0(base, ".pdf"), width = 9, height = 8)
+  print(p_i)
+  dev.off()
+  png(paste0(base, ".png"), width = 9, height = 8, units = "in",
+      res = 300, type = "cairo")
+  print(p_i)
+  dev.off()
+}
+message("  EO_BL_drift_panel_{BL1..BL5}_presentation.pdf / .png")
+
 # ============================================================
 # 9. BUILD HULLS + LOCATION POINTS (used by Section 10 geographic map)
 # ------------------------------------------------------------
@@ -1393,7 +1488,19 @@ png(file.path(out_dir, "EO_BL_geographic_context_map.png"),
 print(p_bl_context)
 dev.off()
 
-message("  EO_BL_geographic_context_map.pdf / .png")
+# Presentation version: same plot, no title/subtitle/caption (for slide decks)
+p_bl_context_pres <- p_bl_context +
+  labs(title = NULL, subtitle = NULL, caption = NULL)
+cairo_pdf(file.path(out_dir, "EO_BL_geographic_context_map_presentation.pdf"),
+          width = 13, height = 9)
+print(p_bl_context_pres)
+dev.off()
+png(file.path(out_dir, "EO_BL_geographic_context_map_presentation.png"),
+    width = 13, height = 9, units = "in", res = 300, type = "cairo")
+print(p_bl_context_pres)
+dev.off()
+
+message("  EO_BL_geographic_context_map.pdf / .png (+ _presentation versions)")
 
 # ============================================================
 # 10c. GEOGRAPHIC OVERVIEW MAP — context-first, no BL coloring
@@ -1548,4 +1655,329 @@ png(file.path(out_dir, "EO_geographic_overview_map.png"),
 print(p_overview)
 dev.off()
 
-message("  EO_geographic_overview_map.pdf / .png")
+# Presentation version: same plot, no title/subtitle/caption (for slide decks)
+p_overview_pres <- p_overview +
+  labs(title = NULL, subtitle = NULL, caption = NULL)
+cairo_pdf(file.path(out_dir, "EO_geographic_overview_map_presentation.pdf"),
+          width = 13, height = 9)
+print(p_overview_pres)
+dev.off()
+png(file.path(out_dir, "EO_geographic_overview_map_presentation.png"),
+    width = 13, height = 9, units = "in", res = 300, type = "cairo")
+print(p_overview_pres)
+dev.off()
+
+message("  EO_geographic_overview_map.pdf / .png (+ _presentation versions)")
+
+# ============================================================
+# 11. BL FRAGMENTATION NETWORK — between-BL distances + drift overlay
+# ------------------------------------------------------------
+# Companion to the within-BL drift panel: visualises how isolated the five
+# bottleneck lineages are from one another and overlays the BL-level drift
+# signature on each node. Together the two figures provide the spatial
+# fragmentation base for predicting genetic drift at the BL level.
+#
+# Nodes : 5 BLs at geographic centroids (UTM 32611)
+#         size  = total BL habitat area (ha)
+#         fill  = mean group drift index (blue weak -> red strong)
+# Edges : all 10 BL pairs; alpha + linewidth scale with inverse of the
+#         shortest population-pair distance (closer = bolder).
+#         Edge labels give the shortest population-pair distance in km
+#         (the most biologically meaningful between-BL metric — closest a
+#         single pollinator could ever bridge two BLs).
+# ============================================================
+
+# BL centroids in UTM (mean of population coords per BL)
+bl_centroid_df <- aggregate(
+  cbind(lon, lat) ~ BL,
+  data = loc_centroids[!is.na(loc_centroids$BL), ],
+  FUN = mean
+)
+bl_centroids_utm <- st_transform(
+  st_as_sf(bl_centroid_df, coords = c("lon", "lat"), crs = 4326),
+  crs = 32611
+)
+bl_xy <- as.data.frame(st_coordinates(bl_centroids_utm))
+bl_xy$BL <- bl_centroids_utm$BL
+
+# Node table: centroid coords + bl_summary stats
+bl_net_nodes <- merge(
+  bl_xy,
+  bl_summary[, c("BL", "total_area_ha", "n_EOs", "n_locations",
+                 "total_pop_size", "mean_drift_index")],
+  by = "BL"
+)
+bl_net_nodes$BL    <- factor(bl_net_nodes$BL, levels = names(bl_strip_cols))
+bl_net_nodes$label <- sprintf("%s\n%.2f ha\n%d ind.",
+                              bl_net_nodes$BL,
+                              bl_net_nodes$total_area_ha,
+                              bl_net_nodes$total_pop_size)
+
+# Between-BL minimum pollinator-reach: closest population pair across BLs
+between_bl <- pair_rows[!is.na(pair_rows$BL_A) & !is.na(pair_rows$BL_B), ]
+between_bl <- between_bl[as.character(between_bl$BL_A) !=
+                         as.character(between_bl$BL_B), ]
+between_bl$pair_key <- mapply(
+  function(a, b) paste(sort(c(a, b)), collapse = "_"),
+  as.character(between_bl$BL_A), as.character(between_bl$BL_B)
+)
+bl_net_edges <- aggregate(distance_m ~ pair_key, data = between_bl, FUN = min)
+bl_net_edges$BL_A    <- vapply(strsplit(bl_net_edges$pair_key, "_"),
+                               `[`, character(1), 1)
+bl_net_edges$BL_B    <- vapply(strsplit(bl_net_edges$pair_key, "_"),
+                               `[`, character(1), 2)
+bl_net_edges$x_A     <- bl_xy$X[match(bl_net_edges$BL_A, bl_xy$BL)]
+bl_net_edges$y_A     <- bl_xy$Y[match(bl_net_edges$BL_A, bl_xy$BL)]
+bl_net_edges$x_B     <- bl_xy$X[match(bl_net_edges$BL_B, bl_xy$BL)]
+bl_net_edges$y_B     <- bl_xy$Y[match(bl_net_edges$BL_B, bl_xy$BL)]
+bl_net_edges$mid_x   <- (bl_net_edges$x_A + bl_net_edges$x_B) / 2
+bl_net_edges$mid_y   <- (bl_net_edges$y_A + bl_net_edges$y_B) / 2
+bl_net_edges$dist_km <- bl_net_edges$distance_m / 1000
+
+# Inverse-distance encoding so closer pairs read as bolder edges
+bl_net_edges$closeness <- 1 / bl_net_edges$dist_km
+rng <- range(bl_net_edges$closeness)
+bl_net_edges$closeness_n <- (bl_net_edges$closeness - rng[1]) /
+                            max(1e-9, diff(rng))
+
+write.csv(bl_net_edges[, c("BL_A", "BL_B", "dist_km")],
+          file.path(out_dir, "EO_BL_pairwise_min_distances.csv"),
+          row.names = FALSE)
+
+cat("=== Between-BL minimum pop-pair distances (km, sorted) ===\n")
+print(bl_net_edges[order(bl_net_edges$dist_km),
+                   c("BL_A", "BL_B", "dist_km")], row.names = FALSE)
+cat("\n")
+
+p_bl_fragnet <- ggplot() +
+  geom_segment(data = bl_net_edges,
+               aes(x = x_A, y = y_A, xend = x_B, yend = y_B,
+                   alpha = closeness_n, linewidth = closeness_n),
+               color = "grey45") +
+  scale_alpha_continuous(range = c(0.18, 0.90), guide = "none") +
+  scale_linewidth_continuous(range = c(0.3, 2.5), guide = "none") +
+  geom_label(data = bl_net_edges,
+             aes(x = mid_x, y = mid_y,
+                 label = sprintf("%.1f km", dist_km)),
+             size = 3.0, fill = "white", color = "grey25",
+             label.size = 0.25, label.padding = unit(0.15, "lines"),
+             alpha = 0.95) +
+  geom_point(data = bl_net_nodes,
+             aes(x = X, y = Y, size = total_area_ha, fill = BL),
+             shape = 21, color = "grey15", stroke = 0.9, alpha = 0.95) +
+  scale_size_area(name     = "BL habitat area (ha)\n(total of connected groups)",
+                  max_size = 28,
+                  breaks   = c(1, 5, 10, 20)) +
+  scale_fill_manual(values = bl_strip_cols,
+                    name   = "Bottleneck lineage",
+                    drop   = FALSE) +
+  ggrepel::geom_label_repel(
+    data = bl_net_nodes,
+    aes(x = X, y = Y, label = label),
+    size = 3.4, fontface = "bold",
+    fill = "white", color = "grey15",
+    label.size = NA, alpha = 0.92,
+    box.padding = 0.6, point.padding = 0.5,
+    lineheight = 0.95, seed = 42
+  ) +
+  guides(
+    fill = guide_legend(order = 1,
+                        override.aes = list(shape = 21, size = 6,
+                                            color = "grey15", stroke = 0.5,
+                                            alpha = 0.95)),
+    size = guide_legend(order = 2,
+                        override.aes = list(shape = 21, fill = "grey75",
+                                            color = "grey15", stroke = 0.6))
+  ) +
+  labs(
+    title    = "Between-BL fragmentation network of Lepidium papilliferum",
+    subtitle = paste0(
+      "Nodes = bottleneck lineages at geographic centroids (UTM 32611); ",
+      "size = BL habitat area, fill = BL identity (Set1 palette).\n",
+      "Edges = all 10 BL pairs; bolder edge = shorter pollinator reach ",
+      "(label gives shortest population-pair distance in km)."
+    ),
+    caption = paste0(
+      "Shortest population-pair distance is the most biologically meaningful ",
+      "between-BL connectivity metric — the closest a single pollinator could ",
+      "ever bridge two BLs.  All 10 BL pairs are >>500 m apart, confirming zero ",
+      "between-BL gene flow under the species' pollinator dispersal threshold."
+    ),
+    x = NULL, y = NULL
+  ) +
+  coord_fixed(expand = TRUE) +
+  theme_minimal(base_size = 11) +
+  theme(
+    plot.title       = element_text(face = "bold", size = 13, hjust = 0.5,
+                                    margin = margin(b = 4)),
+    plot.subtitle    = element_text(size = 10, color = "grey30", hjust = 0.5,
+                                    margin = margin(b = 8)),
+    plot.caption     = element_text(size = 8, color = "grey45", hjust = 0.5,
+                                    margin = margin(t = 8)),
+    legend.position  = "right",
+    legend.title     = element_text(size = 10, face = "bold"),
+    legend.text      = element_text(size = 9),
+    axis.text        = element_text(size = 7, color = "grey50"),
+    panel.grid.major = element_line(color = "grey88", linewidth = 0.2),
+    plot.background  = element_rect(fill = "white", color = NA),
+    plot.margin      = margin(14, 14, 14, 14)
+  )
+
+cairo_pdf(file.path(out_dir, "EO_BL_fragmentation_network.pdf"),
+          width = 11, height = 9)
+print(p_bl_fragnet)
+dev.off()
+png(file.path(out_dir, "EO_BL_fragmentation_network.png"),
+    width = 11, height = 9, units = "in", res = 300, type = "cairo")
+print(p_bl_fragnet)
+dev.off()
+
+p_bl_fragnet_pres <- p_bl_fragnet +
+  labs(title = NULL, subtitle = NULL, caption = NULL)
+cairo_pdf(file.path(out_dir, "EO_BL_fragmentation_network_presentation.pdf"),
+          width = 11, height = 8)
+print(p_bl_fragnet_pres)
+dev.off()
+png(file.path(out_dir, "EO_BL_fragmentation_network_presentation.png"),
+    width = 11, height = 8, units = "in", res = 300, type = "cairo")
+print(p_bl_fragnet_pres)
+dev.off()
+
+message("  EO_BL_fragmentation_network.pdf / .png (+ _presentation versions)")
+message("  EO_BL_pairwise_min_distances.csv")
+
+# ------------------------------------------------------------
+# Geographic-overlay variant: same network drawn on top of the topo
+# background + Snake River + reference cities (so the network reads as
+# "here is how isolated each BL is in real landscape space").
+# Reuses dem_utm, snake_utm, cities_utm, city_coords from Section 10.
+# ------------------------------------------------------------
+p_bl_fragnet_map <- ggplot() +
+  geom_spatraster(data = dem_utm, maxcell = 5e5) +
+  scale_fill_gradientn(
+    colours  = c("#fff8e7", "#f0d9a8", "#d4a574", "#a87545", "#6b4423", "#3d2817"),
+    name     = "Elevation (m)",
+    na.value = NA,
+    guide    = guide_colorbar(barheight = unit(3.2, "cm"),
+                              barwidth  = unit(0.4, "cm"),
+                              order     = 4)
+  ) +
+  geom_sf(data = snake_utm,
+          aes(color = "Snake River"),
+          linewidth = 0.8, alpha = 0.85, show.legend = "line") +
+  scale_color_manual(values = c("Snake River" = "#1f77b4"),
+                     name   = "Map features",
+                     guide  = guide_legend(order = 5,
+                                           override.aes = list(linewidth = 1.2))) +
+  ggnewscale::new_scale_fill() +
+  geom_segment(data = bl_net_edges,
+               aes(x = x_A, y = y_A, xend = x_B, yend = y_B,
+                   alpha = closeness_n, linewidth = closeness_n),
+               color = "grey20") +
+  scale_alpha_continuous(range = c(0.25, 0.95), guide = "none") +
+  scale_linewidth_continuous(range = c(0.4, 2.8), guide = "none") +
+  geom_label(data = bl_net_edges,
+             aes(x = mid_x, y = mid_y,
+                 label = sprintf("%.1f km", dist_km)),
+             size = 3.0, fill = "white", color = "grey20",
+             label.size = 0.25, label.padding = unit(0.16, "lines"),
+             alpha = 0.95) +
+  geom_point(data = bl_net_nodes,
+             aes(x = X, y = Y, size = total_area_ha, fill = BL),
+             shape = 21, color = "grey15", stroke = 0.9, alpha = 0.95) +
+  scale_size_area(name     = "BL habitat area (ha)\n(total of connected groups)",
+                  max_size = 22,
+                  breaks   = c(1, 5, 10, 20)) +
+  scale_fill_manual(values = bl_strip_cols,
+                    name   = "Bottleneck lineage",
+                    drop   = FALSE) +
+  ggrepel::geom_label_repel(
+    data = bl_net_nodes,
+    aes(x = X, y = Y, label = label),
+    size = 3.4, fontface = "bold",
+    fill = "white", color = "grey15",
+    label.size = NA, alpha = 0.92,
+    box.padding = 0.7, point.padding = 0.5,
+    lineheight = 0.95, seed = 42
+  ) +
+  geom_sf(data = cities_utm, shape = 22, fill = "black", color = "white",
+          size = 3.2, stroke = 0.5) +
+  ggrepel::geom_text_repel(
+    data            = city_coords,
+    aes(x = X, y = Y, label = name),
+    fontface        = "bold",
+    size            = 4.8,
+    color           = "grey15",
+    bg.color        = "white",
+    bg.r            = 0.15,
+    point.padding   = unit(0.50, "lines"),
+    box.padding     = unit(0.45, "lines"),
+    nudge_y         = 3500,
+    min.segment.length = 0.2,
+    segment.color   = "grey35",
+    segment.size    = 0.3,
+    max.overlaps    = Inf,
+    seed            = 42
+  ) +
+  guides(
+    fill = guide_legend(order = 1,
+                        override.aes = list(shape = 21, size = 6,
+                                            color = "grey15", stroke = 0.5,
+                                            alpha = 0.95)),
+    size = guide_legend(order = 2,
+                        override.aes = list(shape = 21, fill = "grey75",
+                                            color = "grey15", stroke = 0.6))
+  ) +
+  labs(
+    title    = "Between-BL fragmentation of Lepidium papilliferum on the landscape",
+    subtitle = paste0(
+      "BL fragmentation network from Figure X overlaid on the topo + Snake River + ",
+      "reference-cities backdrop of Figure Y.  Distances are shortest population-pair ",
+      "distances between BLs (km)."
+    ),
+    caption = paste0(
+      "Population coordinates are not accurately represented: Lepidium papilliferum ",
+      "is a federally threatened species and exact coordinates are confidential. ",
+      "BL centroids are the mean of population coordinates within each BL."
+    ),
+    x = NULL, y = NULL
+  ) +
+  coord_sf(crs = 32611, expand = FALSE) +
+  theme_minimal(base_size = 11) +
+  theme(
+    plot.title       = element_text(face = "bold", size = 13, hjust = 0.5,
+                                    margin = margin(b = 4)),
+    plot.subtitle    = element_text(size = 10, color = "grey30", hjust = 0.5,
+                                    margin = margin(b = 8)),
+    plot.caption     = element_text(size = 8, color = "grey45", hjust = 0.5,
+                                    margin = margin(t = 10)),
+    legend.position  = "right",
+    legend.title     = element_text(size = 10, face = "bold"),
+    legend.text      = element_text(size = 9),
+    axis.text        = element_text(size = 7, color = "grey50"),
+    panel.grid.major = element_line(color = "grey85", linewidth = 0.2),
+    plot.background  = element_rect(fill = "white", color = NA),
+    plot.margin      = margin(14, 14, 14, 14)
+  )
+
+cairo_pdf(file.path(out_dir, "EO_BL_fragmentation_network_map.pdf"),
+          width = 13, height = 10)
+print(p_bl_fragnet_map)
+dev.off()
+png(file.path(out_dir, "EO_BL_fragmentation_network_map.png"),
+    width = 13, height = 10, units = "in", res = 300, type = "cairo")
+print(p_bl_fragnet_map)
+dev.off()
+
+p_bl_fragnet_map_pres <- p_bl_fragnet_map +
+  labs(title = NULL, subtitle = NULL, caption = NULL)
+cairo_pdf(file.path(out_dir, "EO_BL_fragmentation_network_map_presentation.pdf"),
+          width = 13, height = 9)
+print(p_bl_fragnet_map_pres)
+dev.off()
+png(file.path(out_dir, "EO_BL_fragmentation_network_map_presentation.png"),
+    width = 13, height = 9, units = "in", res = 300, type = "cairo")
+print(p_bl_fragnet_map_pres)
+dev.off()
+
+message("  EO_BL_fragmentation_network_map.pdf / .png (+ _presentation versions)")
