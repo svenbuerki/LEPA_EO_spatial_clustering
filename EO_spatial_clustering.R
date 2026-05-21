@@ -1269,6 +1269,7 @@ loc_pts$BL   <- factor(loc_pts$BL,   levels = bl_levels)
 library(elevatr)
 library(tidyterra)
 library(rnaturalearth)
+library(patchwork)   # inset_element() for BL-distance heatmap on Section 11 map
 
 # terra ships without a PROJ data dir on some R installs; point it at sf's
 # bundled proj.db so terra::project() can find the CRS database.
@@ -1851,7 +1852,60 @@ message("  EO_BL_pairwise_min_distances.csv")
 # background + Snake River + reference cities (so the network reads as
 # "here is how isolated each BL is in real landscape space").
 # Reuses dem_utm, snake_utm, cities_utm, city_coords from Section 10.
+# A 5x5 lower-triangle BL-distance heatmap is built first (block below) so
+# patchwork::inset_element() can drop it into the top-right of the panel
+# (NE-of-Boise empty quadrant) — preserves the per-pair km values that a
+# histogram/boxplot would collapse over only 10 pairs.
 # ------------------------------------------------------------
+
+# Build heatmap data: compact lower-triangle layout. BL1 never appears as the
+# larger member, BL5 never appears as the smaller member, so drop them from
+# their unused axes — leaves a clean 4-row x 4-col triangle of 10 filled
+# cells, no wasted empty diagonal/upper-right space. Note: levels(bl_net_nodes$BL)
+# is the cluster-index (dendrogram) order, NOT alphanumeric — use explicit
+# alphanumeric BL1..BL5 here so the axis subsets are correct.
+bl_levels_local <- paste0("BL", seq_len(best_k))      # BL1, BL2, ..., BL5
+bl_x_levels     <- bl_levels_local[1:4]               # x: BL1..BL4 (smaller)
+bl_y_levels     <- bl_levels_local[2:5]               # y: BL2..BL5 (larger)
+
+bl_heatmap_data <- transform(
+  bl_net_edges,
+  BL_row = ifelse(BL_A > BL_B, BL_A, BL_B),
+  BL_col = ifelse(BL_A < BL_B, BL_A, BL_B)
+)
+bl_heatmap_data$BL_row <- factor(bl_heatmap_data$BL_row, levels = bl_y_levels)
+bl_heatmap_data$BL_col <- factor(bl_heatmap_data$BL_col, levels = bl_x_levels)
+
+# y reversed so BL2 sits at the top and BL5 at the bottom — standard
+# "lower-triangle distance matrix" reading order.
+y_limits_rev <- rev(bl_y_levels)                      # BL5,BL4,BL3,BL2 bottom->top
+
+p_bl_heatmap <- ggplot(bl_heatmap_data,
+                      aes(x = BL_col, y = BL_row, fill = dist_km)) +
+  geom_tile(color = "white", linewidth = 0.6) +
+  geom_text(aes(label = sprintf("%.0f", dist_km)),
+            color = "grey15", size = 2.8, fontface = "bold") +
+  scale_fill_distiller(palette = "YlOrRd", direction = 1,
+                       name = "km", guide = "none") +
+  scale_x_discrete(limits = bl_x_levels, drop = FALSE) +
+  scale_y_discrete(limits = y_limits_rev, drop = FALSE) +
+  coord_fixed() +
+  labs(title = "Inter-BL distance (km)") +
+  theme_minimal(base_size = 8) +
+  theme(
+    plot.title       = element_text(size = 8.5, face = "bold", hjust = 0.5,
+                                    margin = margin(b = 2)),
+    axis.title       = element_blank(),
+    axis.text.x      = element_text(color = bl_strip_cols[bl_x_levels],
+                                    face = "bold", size = 8),
+    axis.text.y      = element_text(color = bl_strip_cols[y_limits_rev],
+                                    face = "bold", size = 8),
+    panel.grid       = element_blank(),
+    plot.background  = element_rect(fill = "white", color = "grey40",
+                                    linewidth = 0.5),
+    plot.margin      = margin(4, 4, 4, 4)
+  )
+
 p_bl_fragnet_map <- ggplot() +
   geom_spatraster(data = dem_utm, maxcell = 5e5) +
   scale_fill_gradientn(
@@ -1960,6 +2014,23 @@ p_bl_fragnet_map <- ggplot() +
     plot.margin      = margin(14, 14, 14, 14)
   )
 
+# Build the presentation variant BEFORE adding the inset — once a patchwork
+# is created, subsequent `+ labs(...)` may not propagate to the main plot.
+p_bl_fragnet_map_pres <- p_bl_fragnet_map +
+  labs(title = NULL, subtitle = NULL, caption = NULL)
+
+# Drop the inter-BL distance heatmap into the NE-of-Boise empty quadrant of
+# each map's panel. align_to = "panel" makes the fractional coords relative
+# to the map area, not the full figure (so the inset does not collide with
+# the right-side legend).
+bl_heatmap_inset <- patchwork::inset_element(
+  p_bl_heatmap,
+  left = 0.53, bottom = 0.66, right = 0.89, top = 0.99,
+  align_to = "panel"
+)
+p_bl_fragnet_map      <- p_bl_fragnet_map      + bl_heatmap_inset
+p_bl_fragnet_map_pres <- p_bl_fragnet_map_pres + bl_heatmap_inset
+
 cairo_pdf(file.path(out_dir, "EO_BL_fragmentation_network_map.pdf"),
           width = 13, height = 10)
 print(p_bl_fragnet_map)
@@ -1969,8 +2040,6 @@ png(file.path(out_dir, "EO_BL_fragmentation_network_map.png"),
 print(p_bl_fragnet_map)
 dev.off()
 
-p_bl_fragnet_map_pres <- p_bl_fragnet_map +
-  labs(title = NULL, subtitle = NULL, caption = NULL)
 cairo_pdf(file.path(out_dir, "EO_BL_fragmentation_network_map_presentation.pdf"),
           width = 13, height = 9)
 print(p_bl_fragnet_map_pres)
