@@ -810,14 +810,15 @@ if (is.null(all_near2)) all_near2 <- data.frame()
 all_far2   <- do.call(rbind, Filter(Negate(is.null), bl_far_list2))
 if (is.null(all_far2))  all_far2  <- data.frame()
 
-# Reorder BLs by within-BL connectivity (descending), then by population size.
+# Reorder BLs by total habitat area (descending), then by within-BL
+# connectivity (descending), then by BL name (ascending) as a deterministic
+# tie-break. Area is a direct proxy for Ne (carrying capacity -> drift floor);
+# connectivity is the secondary stratification for BLs of similar size.
 # Connectivity score = locations in multi-location groups = n_locations - n_groups.
-# This puts the three "connected" BLs first (top row of facet) and the two
-# fully isolated BLs second (bottom row) \u2014 supporting predictions of where
-# pollinator-mediated gene flow buffers drift vs where it does not.
 bl_summary <- bl_summary[
-  order(-(bl_summary$n_locations - bl_summary$n_groups),
-        -bl_summary$total_pop_size),
+  order(-bl_summary$total_area_ha,
+        -(bl_summary$n_locations - bl_summary$n_groups),
+        bl_summary$BL),
 ]
 
 # Facet labels: BL name + summary statistics
@@ -969,7 +970,7 @@ p_bl_net <- ggplot(all_nodes2, aes(x = x, y = y)) +
     ),
     subtitle = paste0(
       "C3 Hypothesis \u2014 Stage 4  |  39 locations in 5 BLs  |  ",
-      "Panels ordered by within-BL connectivity (top row: connected; bottom row: isolated)"
+      "Panels ordered by total habitat area, then by within-BL connectivity"
     ),
     caption = paste0(
       "No between-BL connections exist (all BLs separated by >10 km).  ",
