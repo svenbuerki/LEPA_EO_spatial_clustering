@@ -807,10 +807,18 @@ for (bl in sort(unique(loc_centroids$BL[!is.na(loc_centroids$BL)]))) {
       x = (loc_xy$lon - xr[1]) / max(diff(xr), 1e-9),
       y = (loc_xy$lat - yr[1]) / max(diff(yr), 1e-9)
     )
+    # km offsets from the BL SW corner — used by the per-BL presentation
+    # panels so x/y axes show real geographic scale.
+    lay_bl_km <- cbind(
+      x_km = (loc_xy$lon - xr[1]) * cos(mean_lat_rad) * 111,
+      y_km = (loc_xy$lat - yr[1]) * 111
+    )
   } else {
-    lay_bl <- matrix(c(0.5, 0.5), nrow = 1)
+    lay_bl    <- matrix(c(0.5, 0.5), nrow = 1)
+    lay_bl_km <- matrix(c(0.0, 0.0), nrow = 1)
   }
-  rownames(lay_bl) <- V(g_bl)$name
+  rownames(lay_bl)    <- V(g_bl)$name
+  rownames(lay_bl_km) <- V(g_bl)$name
   bl_extent_km[[bl]] <- c(x_km = bl_x_km, y_km = bl_y_km)
 
   # Node data frame: one row per location
@@ -818,6 +826,8 @@ for (bl in sort(unique(loc_centroids$BL[!is.na(loc_centroids$BL)]))) {
     locationID = as.integer(rownames(lay_bl)),
     x          = lay_bl[, 1],
     y          = lay_bl[, 2],
+    x_km       = lay_bl_km[, 1],
+    y_km       = lay_bl_km[, 2],
     stringsAsFactors = FALSE
   )
   nd <- merge(nd,
@@ -832,16 +842,23 @@ for (bl in sort(unique(loc_centroids$BL[!is.na(loc_centroids$BL)]))) {
                         nd$pop_size, " ind.")
   bl_node_list2[[bl]] <- nd
 
-  # Helper: attach layout coords to edge table
+  # Helper: attach layout coords (both [0, 1] normalised and km offsets) to
+  # edge table
   add_lay2 <- function(pairs) {
     if (nrow(pairs) == 0) return(NULL)
-    pairs$x_A   <- lay_bl[as.character(pairs$locationID_A), 1]
-    pairs$y_A   <- lay_bl[as.character(pairs$locationID_A), 2]
-    pairs$x_B   <- lay_bl[as.character(pairs$locationID_B), 1]
-    pairs$y_B   <- lay_bl[as.character(pairs$locationID_B), 2]
-    pairs$mid_x <- (pairs$x_A + pairs$x_B) / 2
-    pairs$mid_y <- (pairs$y_A + pairs$y_B) / 2
-    pairs$BL    <- bl
+    pairs$x_A      <- lay_bl[   as.character(pairs$locationID_A), 1]
+    pairs$y_A      <- lay_bl[   as.character(pairs$locationID_A), 2]
+    pairs$x_B      <- lay_bl[   as.character(pairs$locationID_B), 1]
+    pairs$y_B      <- lay_bl[   as.character(pairs$locationID_B), 2]
+    pairs$x_A_km   <- lay_bl_km[as.character(pairs$locationID_A), 1]
+    pairs$y_A_km   <- lay_bl_km[as.character(pairs$locationID_A), 2]
+    pairs$x_B_km   <- lay_bl_km[as.character(pairs$locationID_B), 1]
+    pairs$y_B_km   <- lay_bl_km[as.character(pairs$locationID_B), 2]
+    pairs$mid_x    <- (pairs$x_A    + pairs$x_B   ) / 2
+    pairs$mid_y    <- (pairs$y_A    + pairs$y_B   ) / 2
+    pairs$mid_x_km <- (pairs$x_A_km + pairs$x_B_km) / 2
+    pairs$mid_y_km <- (pairs$y_A_km + pairs$y_B_km) / 2
+    pairs$BL       <- bl
     pairs
   }
   bl_conn_list2[[bl]] <- add_lay2(bl_conn)
@@ -1206,14 +1223,15 @@ for (bl_i in names(bl_strip_cols)) {
     sub_i$total_area_ha, sub_i$total_pop_size
   )
 
-  p_i <- ggplot(nd_i, aes(x = x, y = y)) +
+  # ---------------- Main BL map (km coordinates, visible axes) ----------
+  p_i <- ggplot(nd_i, aes(x = x_km, y = y_km)) +
     {if (nrow(far_i) > 0) list(
       geom_segment(data = far_i,
-                   aes(x = x_A, y = y_A, xend = x_B, yend = y_B),
+                   aes(x = x_A_km, y = y_A_km, xend = x_B_km, yend = y_B_km),
                    color = "grey55", linewidth = 0.7,
                    linetype = "dashed", alpha = 0.80, inherit.aes = FALSE),
       geom_label(data = far_i,
-                 aes(x = mid_x, y = mid_y,
+                 aes(x = mid_x_km, y = mid_y_km,
                      label = paste0(round(distance_m / 1000, 1), " km")),
                  size = 3.6, fill = "white", color = "grey20",
                  linewidth = 0.3, alpha = 0.95, inherit.aes = FALSE,
@@ -1221,7 +1239,7 @@ for (bl_i in names(bl_strip_cols)) {
     )} +
     {if (nrow(near_i) > 0)
       geom_segment(data = near_i,
-                   aes(x = x_A, y = y_A, xend = x_B, yend = y_B),
+                   aes(x = x_A_km, y = y_A_km, xend = x_B_km, yend = y_B_km),
                    color = "grey55", linewidth = 0.7,
                    linetype = "solid", alpha = 0.70, inherit.aes = FALSE)
     } +
@@ -1235,7 +1253,7 @@ for (bl_i in names(bl_strip_cols)) {
     scale_shape_manual(values = c("TRUE" = 21, "FALSE" = 23), guide = "none") +
     {if (nrow(conn_i) > 0)
       geom_segment(data = conn_i,
-                   aes(x = x_A, y = y_A, xend = x_B, yend = y_B,
+                   aes(x = x_A_km, y = y_A_km, xend = x_B_km, yend = y_B_km,
                        color = link_type),
                    linewidth = 1.8, alpha = 0.92, inherit.aes = FALSE)
     } +
@@ -1244,7 +1262,7 @@ for (bl_i in names(bl_strip_cols)) {
                        guide = "none", drop = FALSE) +
     {if (nrow(conn_i) > 0)
       geom_label(data = conn_i,
-                 aes(x = mid_x, y = mid_y,
+                 aes(x = mid_x_km, y = mid_y_km,
                      label = paste0(round(distance_m), " m")),
                  size = 3.4, fill = "white", color = "grey10",
                  linewidth = 0.25, alpha = 0.92, inherit.aes = FALSE,
@@ -1257,31 +1275,94 @@ for (bl_i in names(bl_strip_cols)) {
       label.size = NA, alpha = 0.92, max.overlaps = 60,
       lineheight = 0.85, min.segment.length = 0.2
     ) +
-    # Real-world extent annotation placed in the emptiest corner of the
-    # panel (computed per-BL above via .emptiest_corner so the label avoids
-    # the data and edges).
-    {
-      pos <- bl_scale_pos[[bl_i]]
-      ext <- bl_extent_km[[bl_i]]
-      if (!is.null(pos) && !is.null(ext)) {
-        annotate("text", x = pos[["x"]], y = pos[["y"]],
-                 label = sprintf("~ %.1f km E-W x %.1f km N-S",
-                                 ext[1], ext[2]),
-                 hjust = pos[["hjust"]], vjust = pos[["vjust"]],
-                 size = 3.4, colour = "grey35")
-      }
-    } +
-    labs(title = hdr_i, subtitle = NULL, caption = NULL, x = NULL, y = NULL) +
-    theme_void(base_size = 11) +
+    labs(title = hdr_i, subtitle = NULL, caption = NULL,
+         x = "km east", y = "km north") +
+    theme_minimal(base_size = 11) +
     theme(
       legend.position = "none",
       panel.border    = element_rect(color = border_col, fill = NA, linewidth = 2.5),
+      panel.grid.major = element_line(color = "grey92", linewidth = 0.3),
+      panel.grid.minor = element_blank(),
+      axis.title       = element_text(size = 10, color = "grey25"),
+      axis.text        = element_text(size = 9, color = "grey25"),
       plot.title      = element_text(face = "bold", size = 16, hjust = 0.5,
                                      color = border_col,
                                      margin = margin(t = 4, b = 10)),
       plot.background = element_rect(fill = "white", color = NA),
       plot.margin     = margin(12, 12, 12, 12)
     )
+
+  # ---------------- Within-BL group-pairwise distance heatmap inset ------
+  # Same visual recipe as the inter-BL heatmap dropped into
+  # EO_BL_fragmentation_network_map_presentation.png: lower-triangle of
+  # group-to-group minimum hull distances, YlOrRd fill, in-cell km values,
+  # no colour legend.
+  groups_in_bl_i <- sort(unique(as.integer(as.character(nd_i$group))))
+  hm_pairs_i <- grp_pair_rows[grp_pair_rows$group_A %in% groups_in_bl_i &
+                                grp_pair_rows$group_B %in% groups_in_bl_i, ]
+  p_heatmap_i <- NULL
+  if (nrow(hm_pairs_i) >= 1) {
+    g_lvls_x <- as.character(sort(groups_in_bl_i))
+    g_lvls_y <- as.character(sort(groups_in_bl_i))
+    hm_pairs_i$row <- ifelse(hm_pairs_i$group_A > hm_pairs_i$group_B,
+                              as.character(hm_pairs_i$group_A),
+                              as.character(hm_pairs_i$group_B))
+    hm_pairs_i$col <- ifelse(hm_pairs_i$group_A < hm_pairs_i$group_B,
+                              as.character(hm_pairs_i$group_A),
+                              as.character(hm_pairs_i$group_B))
+    # Lower-triangle: drop the largest group from the col axis and the
+    # smallest from the row axis (they never appear there).
+    g_lvls_col <- head(g_lvls_x, -1)
+    g_lvls_row <- tail(g_lvls_y, -1)
+    hm_pairs_i$col <- factor(hm_pairs_i$col, levels = g_lvls_col)
+    hm_pairs_i$row <- factor(hm_pairs_i$row, levels = g_lvls_row)
+    y_lvls_rev <- rev(g_lvls_row)
+    p_heatmap_i <- ggplot(hm_pairs_i,
+                          aes(x = col, y = row, fill = min_dist_m / 1000)) +
+      geom_tile(color = "white", linewidth = 0.4) +
+      geom_text(aes(label = ifelse(min_dist_m / 1000 < 1,
+                                    sprintf("%.1f", min_dist_m / 1000),
+                                    sprintf("%.0f", min_dist_m / 1000))),
+                color = "grey15", size = 2.6, fontface = "bold") +
+      scale_fill_distiller(palette = "YlOrRd", direction = 1,
+                            name = "km", guide = "none") +
+      scale_x_discrete(limits = g_lvls_col, drop = FALSE) +
+      scale_y_discrete(limits = y_lvls_rev, drop = FALSE) +
+      coord_fixed() +
+      labs(title = "Within-BL group distance (km)") +
+      theme_minimal(base_size = 8) +
+      theme(
+        plot.title       = element_text(size = 8.5, face = "bold", hjust = 0.5,
+                                        margin = margin(b = 2)),
+        axis.title       = element_blank(),
+        axis.text.x      = element_text(face = "bold", size = 8,
+                                        colour = "grey25"),
+        axis.text.y      = element_text(face = "bold", size = 8,
+                                        colour = "grey25"),
+        panel.grid       = element_blank(),
+        plot.background  = element_rect(fill = "white", color = "grey40",
+                                        linewidth = 0.5),
+        plot.margin      = margin(4, 4, 4, 4)
+      )
+  }
+
+  # ---------------- Assemble: drop the heatmap into the emptiest corner ---
+  # bl_scale_pos[[bl_i]] gives the corner anchor in fractional [0, 1] panel
+  # coords. Convert that anchor into an inset bounding box (width × height
+  # = 0.32 × 0.32 of panel).
+  if (!is.null(p_heatmap_i)) {
+    pos <- bl_scale_pos[[bl_i]]
+    iw  <- 0.40; ih <- 0.40   # heatmap inset width / height as fraction of panel
+    if (pos[["hjust"]] == 0) { ileft   <- pos[["x"]]; iright <- pos[["x"]] + iw }
+    else                     { ileft   <- pos[["x"]] - iw; iright <- pos[["x"]] }
+    if (pos[["vjust"]] == 0) { ibottom <- pos[["y"]]; itop   <- pos[["y"]] + ih }
+    else                     { ibottom <- pos[["y"]] - ih; itop   <- pos[["y"]] }
+    p_i <- p_i + patchwork::inset_element(
+      p_heatmap_i,
+      left = ileft, bottom = ibottom, right = iright, top = itop,
+      align_to = "panel"
+    )
+  }
 
   base <- file.path(out_dir, paste0("EO_BL_drift_panel_", bl_i, "_presentation"))
   cairo_pdf(paste0(base, ".pdf"), width = 9, height = 8)
