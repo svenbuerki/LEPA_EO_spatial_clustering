@@ -704,6 +704,29 @@ bl_node_list2 <- list()
 bl_conn_list2 <- list()
 bl_near_list2 <- list()
 bl_far_list2  <- list()
+bl_extent_km  <- list()    # per-BL E-W and N-S span (km) for scale annotation
+bl_scale_pos  <- list()    # per-BL chosen corner for the scale annotation
+
+# Helper: pick the [0, 1]^2 corner that maximises the minimum distance from
+# any of the supplied data points (nodes + edge midpoints). Used to place the
+# per-BL scale annotation without overlapping data.
+.emptiest_corner <- function(xy) {
+  corners <- list(
+    BL = c(x = 0.02, y = 0.04, hjust = 0, vjust = 0),
+    BR = c(x = 0.98, y = 0.04, hjust = 1, vjust = 0),
+    TL = c(x = 0.02, y = 0.96, hjust = 0, vjust = 1),
+    TR = c(x = 0.98, y = 0.96, hjust = 1, vjust = 1)
+  )
+  if (is.null(xy) || nrow(xy) == 0) return(corners$BL)
+  best <- corners$BL
+  best_md <- -Inf
+  for (c in corners) {
+    d <- sqrt((xy$x - c[["x"]])^2 + (xy$y - c[["y"]])^2)
+    md <- min(d)
+    if (md > best_md) { best_md <- md; best <- c }
+  }
+  best
+}
 
 for (bl in sort(unique(loc_centroids$BL[!is.na(loc_centroids$BL)]))) {
 
@@ -754,17 +777,41 @@ for (bl in sort(unique(loc_centroids$BL[!is.na(loc_centroids$BL)]))) {
                        rep(0.4, nrow(bl_near)),
                        rep(0.1, nrow(bl_far)))
 
-  # FR layout, normalised to [0, 1]
-  set.seed(42)
-  if (vcount(g_bl) > 1) {
-    lay_bl <- layout_with_fr(g_bl, weights = E(g_bl)$weight)
+  # Geographic layout: x = longitude, y = latitude (from Peggy CSV via
+  # loc_centroids). Was a Fruchterman-Reingold algorithmic layout before
+  # 2026-05-30 — that minimised edge crossings but gave each BL panel an
+  # arbitrary orientation. Switching to lon/lat keeps north up and east right.
+  #
+  # Per-axis [0, 1] normalisation (rather than aspect-preserving): each panel
+  # fills its full canvas regardless of the BL's geographic shape. Aspect
+  # ratio of the underlying geography is communicated separately by a "X.X km
+  # E–W × Y.Y km N–S" text annotation per facet (built below). This trade-off
+  # was chosen on 2026-05-30: empty whitespace from aspect-preserving
+  # normalisation hindered communication more than per-axis stretching does,
+  # provided the actual extent is labelled.
+  loc_xy <- loc_centroids[
+    match(as.integer(V(g_bl)$name), loc_centroids$locationID),
+    c("lon", "lat")
+  ]
+  bl_x_km <- bl_y_km <- 0
+  if (vcount(g_bl) > 1 && diff(range(loc_xy$lon)) +
+                            diff(range(loc_xy$lat)) > 1e-9) {
+    xr <- range(loc_xy$lon); yr <- range(loc_xy$lat)
+    mean_lat_rad <- mean(yr) * pi / 180
+    # Convert lon/lat span to km for the scale annotation. 1 deg lat ≈ 111 km;
+    # 1 deg lon ≈ 111 km × cos(lat) at latitude `mean_lat`. Accurate to <1 %
+    # over a single BL's extent at Idaho latitudes.
+    bl_x_km <- diff(xr) * cos(mean_lat_rad) * 111
+    bl_y_km <- diff(yr) * 111
+    lay_bl <- cbind(
+      x = (loc_xy$lon - xr[1]) / max(diff(xr), 1e-9),
+      y = (loc_xy$lat - yr[1]) / max(diff(yr), 1e-9)
+    )
   } else {
     lay_bl <- matrix(c(0.5, 0.5), nrow = 1)
   }
   rownames(lay_bl) <- V(g_bl)$name
-  xr <- range(lay_bl[, 1]); yr <- range(lay_bl[, 2])
-  lay_bl[, 1] <- (lay_bl[, 1] - xr[1]) / max(diff(xr), 1e-3)
-  lay_bl[, 2] <- (lay_bl[, 2] - yr[1]) / max(diff(yr), 1e-3)
+  bl_extent_km[[bl]] <- c(x_km = bl_x_km, y_km = bl_y_km)
 
   # Node data frame: one row per location
   nd <- data.frame(
@@ -800,6 +847,20 @@ for (bl in sort(unique(loc_centroids$BL[!is.na(loc_centroids$BL)]))) {
   bl_conn_list2[[bl]] <- add_lay2(bl_conn)
   bl_near_list2[[bl]] <- add_lay2(bl_near)
   bl_far_list2[[bl]]  <- add_lay2(bl_far)
+
+  # Build the "occupied points" set for this BL (nodes + edge endpoints +
+  # edge midpoints — anything the scale annotation could collide with) and
+  # pick the emptiest corner for the scale label.
+  occ_xy <- nd[, c("x", "y")]
+  for (et in list(bl_conn_list2[[bl]], bl_near_list2[[bl]], bl_far_list2[[bl]])) {
+    if (!is.null(et) && nrow(et) > 0) {
+      occ_xy <- rbind(occ_xy,
+                      data.frame(x = et$x_A,   y = et$y_A),
+                      data.frame(x = et$x_B,   y = et$y_B),
+                      data.frame(x = et$mid_x, y = et$mid_y))
+    }
+  }
+  bl_scale_pos[[bl]] <- .emptiest_corner(occ_xy)
 }
 
 all_nodes2 <- do.call(rbind, bl_node_list2)
@@ -961,7 +1022,32 @@ p_bl_net <- ggplot(all_nodes2, aes(x = x, y = y)) +
                             override.aes = list(color = "grey55", linewidth = 0.8))
   ) +
 
+  # Per-axis [0, 1] normalisation (see Section 8 layout block) fills the panel
+  # while preserving cardinal orientation (lon → x, lat → y).  Aspect ratio
+  # is sacrificed in exchange for full panel use; the "X.X km E-W x Y.Y km
+  # N-S" annotation below tells the reader the actual extent of each BL.
   facet_wrap(~ BL_label, nrow = 2, scales = "free") +
+  # Per-facet scale annotation: real-world span in km of each BL, placed in
+  # whichever corner is farthest from the BL's data points and edges (chosen
+  # by .emptiest_corner above so the label doesn't overlap the network).
+  {
+    bl_names_ord <- names(bl_extent_km)
+    scale_df <- data.frame(
+      BL_label = factor(bl_labels2[bl_names_ord], levels = bl_labels2),
+      label    = sapply(bl_names_ord, function(b)
+                          sprintf("~ %.1f km E-W x %.1f km N-S",
+                                  bl_extent_km[[b]][1], bl_extent_km[[b]][2])),
+      x        = sapply(bl_names_ord, function(b) bl_scale_pos[[b]][["x"]]),
+      y        = sapply(bl_names_ord, function(b) bl_scale_pos[[b]][["y"]]),
+      h        = sapply(bl_names_ord, function(b) bl_scale_pos[[b]][["hjust"]]),
+      v        = sapply(bl_names_ord, function(b) bl_scale_pos[[b]][["vjust"]])
+    )
+    geom_text(
+      data = scale_df,
+      aes(x = x, y = y, label = label, hjust = h, vjust = v),
+      size = 3.0, colour = "grey35", inherit.aes = FALSE
+    )
+  } +
 
   labs(
     title    = paste0(
@@ -1171,6 +1257,20 @@ for (bl_i in names(bl_strip_cols)) {
       label.size = NA, alpha = 0.92, max.overlaps = 60,
       lineheight = 0.85, min.segment.length = 0.2
     ) +
+    # Real-world extent annotation placed in the emptiest corner of the
+    # panel (computed per-BL above via .emptiest_corner so the label avoids
+    # the data and edges).
+    {
+      pos <- bl_scale_pos[[bl_i]]
+      ext <- bl_extent_km[[bl_i]]
+      if (!is.null(pos) && !is.null(ext)) {
+        annotate("text", x = pos[["x"]], y = pos[["y"]],
+                 label = sprintf("~ %.1f km E-W x %.1f km N-S",
+                                 ext[1], ext[2]),
+                 hjust = pos[["hjust"]], vjust = pos[["vjust"]],
+                 size = 3.4, colour = "grey35")
+      }
+    } +
     labs(title = hdr_i, subtitle = NULL, caption = NULL, x = NULL, y = NULL) +
     theme_void(base_size = 11) +
     theme(
@@ -1502,7 +1602,52 @@ png(file.path(out_dir, "EO_BL_geographic_context_map_presentation.png"),
 print(p_bl_context_pres)
 dev.off()
 
-message("  EO_BL_geographic_context_map.pdf / .png (+ _presentation versions)")
+# Labeled-for-presentation variant: highlights the six EOs that drive the
+# downstream PVA (Canu_amplicon/SRK_TP1_pva_v17_*). For each model EO we
+# place one repelled white-fill label at the centroid of its locations, so
+# audiences can connect the BL panels in the deck to the same six EOs.
+MODEL_EOS <- c("EO18", "EO25", "EO27", "EO67", "EO70", "EO76")
+model_eo_centroids <- do.call(rbind, lapply(MODEL_EOS, function(eo) {
+  pts <- loc_pts[loc_pts$EOCode == eo, ]
+  if (nrow(pts) == 0) return(NULL)
+  centroid <- sf::st_centroid(sf::st_union(pts))
+  sf::st_sf(EOCode = eo, geometry = centroid)
+}))
+model_eo_centroids_coords <- sf::st_coordinates(model_eo_centroids)
+model_eo_centroids$X <- model_eo_centroids_coords[, "X"]
+model_eo_centroids$Y <- model_eo_centroids_coords[, "Y"]
+
+p_bl_context_pres_labeled <- p_bl_context_pres +
+  ggrepel::geom_label_repel(
+    data            = model_eo_centroids,
+    aes(x = X, y = Y, label = EOCode),
+    fontface        = "bold",
+    size            = 4.6,
+    colour          = "grey15",
+    fill            = "white",
+    label.r         = unit(0.10, "lines"),
+    label.padding   = unit(0.25, "lines"),
+    point.padding   = unit(0.55, "lines"),
+    box.padding     = unit(0.55, "lines"),
+    min.segment.length = 0.2,
+    segment.colour  = "grey35",
+    segment.size    = 0.4,
+    max.overlaps    = Inf,
+    seed            = 42
+  )
+cairo_pdf(file.path(out_dir,
+                    "EO_BL_geographic_context_map_presentation_labeled.pdf"),
+          width = 13, height = 9)
+print(p_bl_context_pres_labeled)
+dev.off()
+png(file.path(out_dir,
+              "EO_BL_geographic_context_map_presentation_labeled.png"),
+    width = 13, height = 9, units = "in", res = 300, type = "cairo")
+print(p_bl_context_pres_labeled)
+dev.off()
+
+message("  EO_BL_geographic_context_map.pdf / .png (+ _presentation +",
+        " _presentation_labeled versions)")
 
 # ============================================================
 # 10c. GEOGRAPHIC OVERVIEW MAP — context-first, no BL coloring
